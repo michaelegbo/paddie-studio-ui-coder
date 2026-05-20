@@ -30,6 +30,11 @@
     }
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["paddiestudiobeta"]
+      }
+    },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc0NEVFQUU3MDE2NjFEMTcKUldRWEhXWUI1K3BPZEMvTkJUSkF0ZUgrQjY4MTZKNGE0a0U5dFZuRkY0LzRNZTdLUTNzVGJlczcK",
       "endpoints": ["https://github.com/michaelegbo/paddie-studio-ui-coder/releases/download/beta/latest.json"]

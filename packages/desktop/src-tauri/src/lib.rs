@@ -534,10 +534,27 @@ async fn initialize(app: AppHandle) {
 }
 
 fn setup_app(app: &tauri::AppHandle, init_rx: watch::Receiver<InitStep>) {
-    #[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+    cleanup_legacy_deep_links(app);
+
+    #[cfg(any(target_os = "linux", windows))]
     app.deep_link().register_all().ok();
 
     app.manage(InitState { current: init_rx });
+}
+
+fn cleanup_legacy_deep_links(app: &tauri::AppHandle) {
+    #[cfg(not(windows))]
+    let _ = app;
+
+    #[cfg(windows)]
+    {
+        let channel = option_env!("OPENCODE_CHANNEL").unwrap_or("prod");
+        if matches!(channel, "dev" | "beta")
+            && app.deep_link().is_registered("paddiestudio").unwrap_or(false)
+        {
+            app.deep_link().unregister("paddiestudio").ok();
+        }
+    }
 }
 
 fn spawn_cli_sync_task(app: AppHandle) {

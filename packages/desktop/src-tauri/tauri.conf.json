@@ -65,7 +65,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["paddiestudio"]
+        "schemes": ["paddiestudiodev"]
       }
     },
     "updater": {
