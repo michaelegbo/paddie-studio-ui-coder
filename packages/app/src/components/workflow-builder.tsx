@@ -1,6 +1,17 @@
 import { Button } from "@opencode-ai/ui/button"
 import { showToast } from "@opencode-ai/ui/toast"
-import { createEffect, createMemo, createResource, createSignal, ErrorBoundary, For, onCleanup, onMount, Show } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createResource,
+  createSignal,
+  ErrorBoundary,
+  For,
+  onCleanup,
+  onMount,
+  Show,
+  Suspense,
+} from "solid-js"
 import { type AuthUser, useAuth } from "@/context/auth"
 import { usePlatform } from "@/context/platform"
 import { paddieApi } from "@/lib/paddie-api"
@@ -235,7 +246,9 @@ export function WorkflowBuilder(props: { onAttachWorkflow?: (payload: WorkflowAt
         </div>
       )}
     >
-      <WorkflowBuilderFrame onAttachWorkflow={props.onAttachWorkflow} />
+      <Suspense fallback={<div class="h-[calc(100vh-12rem)] min-h-[760px] rounded-[20px] bg-[#09090b]" />}>
+        <WorkflowBuilderFrame onAttachWorkflow={props.onAttachWorkflow} />
+      </Suspense>
     </ErrorBoundary>
   )
 }
