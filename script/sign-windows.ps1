@@ -67,4 +67,14 @@ $params = @{
   ExcludeInteractiveBrowserCredential = $true
 }
 
-Invoke-TrustedSigning @params
+try {
+  Invoke-TrustedSigning @params
+}
+catch {
+  if ($env:WINDOWS_SIGNING_REQUIRED -eq "true") {
+    throw
+  }
+
+  Write-Warning "Windows signing failed, continuing because WINDOWS_SIGNING_REQUIRED is not true: $($_.Exception.Message)"
+  exit 0
+}
