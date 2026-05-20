@@ -71,7 +71,7 @@ function route(value: string) {
   return value.replace(
     full,
     (match, jsx, tag, gate, studio) =>
-      `${match},${jsx}.jsx(${tag},{path:"*",element:${jsx}.jsx(${gate},{children:${jsx}.jsx(${studio},{})})})`,
+      `${match},${jsx}.jsx(${tag},{path:"*",element:${jsx}.jsx(${gate},{children:${jsx}.jsx(${studio},{autoFullscreen:!0})})})`,
   )
 }
 
@@ -83,11 +83,11 @@ function router(value: string) {
   )
 }
 
-function patch(value: string) {
+export function patchWorkflowBuilderScript(value: string) {
   return router(route(origin(host(value))))
 }
 
-const boot = (token: string, user: AuthUser) => `<script>
+export const workflowBuilderBoot = (token: string, user: AuthUser) => `<script>
 (() => {
   const app = ${JSON.stringify(PADDIE_APP_ORIGIN)}
   const token = ${JSON.stringify(token)}
@@ -111,7 +111,7 @@ const boot = (token: string, user: AuthUser) => `<script>
   localStorage.setItem("paddie_studio_token", token)
   window.__paddie_app_origin = app
 
-  const loc = new URL("/studio/embed", app)
+  const loc = new URL("/studio/fullscreen", app)
   const move = (url) => {
     if (!url) return
     loc.href = new URL(String(url), loc.href).href
@@ -197,7 +197,7 @@ async function source(fetcher: typeof fetch, token: string, user: AuthUser) {
       text(fetcher, new URL(el.getAttribute("src") ?? "", PADDIE_APP_ORIGIN).href),
     ),
   )
-  const patched = scripts.map(patch)
+  const patched = scripts.map(patchWorkflowBuilderScript)
   if (!patched.some((value) => value.includes("__paddie_router_window"))) {
     throw new Error("Workflow Builder router not found")
   }
@@ -210,7 +210,7 @@ async function source(fetcher: typeof fetch, token: string, user: AuthUser) {
   return `<!doctype html>
 <html>
 <head>
-${boot(token, user)}
+${workflowBuilderBoot(token, user)}
 <base href="${PADDIE_APP_ORIGIN}/">
 ${doc.head.innerHTML}
 ${styles.map((css) => `<style>${esc(css)}</style>`).join("\n")}
