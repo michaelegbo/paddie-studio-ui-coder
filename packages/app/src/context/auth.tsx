@@ -1,5 +1,6 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createSignal, onCleanup, onMount } from "solid-js"
+import { isStudioAuthUrl } from "@/lib/paddie-links"
 
 export type AuthUser = {
   userId: string
@@ -152,13 +153,13 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
       const onForceLogout = () => logout()
       window.addEventListener("paddie:logout", onForceLogout)
 
-      // Handle deep link: paddiestudio://auth?token=JWT
+      // Handle deep link callbacks such as paddiestudio://auth?token=JWT.
       const onDeepLink = (e: Event) => {
         const urls: string[] = (e as CustomEvent).detail?.urls ?? []
         for (const url of urls) {
           try {
             const u = new URL(url)
-            if (u.protocol === "paddiestudio:" && u.hostname === "auth") {
+            if (isStudioAuthUrl(u)) {
               const jwt = u.searchParams.get("token")
               if (jwt) {
                 localStorage.setItem(TOKEN_KEY, jwt)
