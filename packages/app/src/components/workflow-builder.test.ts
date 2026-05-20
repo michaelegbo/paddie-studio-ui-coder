@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { patchWorkflowBuilderScript, workflowBuilderBoot } from "./workflow-builder"
+import { patchWorkflowBuilderScript, workflowBuilderBoot, workflowBuilderEmbedUrl } from "./workflow-builder"
 
 test("workflow builder fallback route keeps fullscreen studio mode", () => {
   const route =
@@ -27,5 +27,11 @@ test("workflow builder embed starts on the fullscreen route", () => {
   })
 
   expect(boot).toContain('const loc = new URL("/studio/fullscreen", app)')
+  expect(boot).toContain("background:#09090b!important")
+  expect(boot).toContain("color-scheme:dark")
   expect(boot).not.toContain("/studio/embed")
+})
+
+test("workflow builder direct desktop embed uses hosted fullscreen route", () => {
+  expect(workflowBuilderEmbedUrl()).toBe("https://app.paddie.io/studio/fullscreen?desktop_embed=1")
 })

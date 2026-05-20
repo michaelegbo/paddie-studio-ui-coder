@@ -23,7 +23,7 @@ use std::{
     time::Duration,
 };
 use tauri::{AppHandle, Listener, Manager, RunEvent, State, ipc::Channel};
-#[cfg(any(target_os = "linux", all(debug_assertions, windows)))]
+#[cfg(any(target_os = "linux", windows))]
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_specta::Event;
 use tokio::{
