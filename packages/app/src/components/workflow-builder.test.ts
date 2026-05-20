@@ -10,6 +10,15 @@ test("workflow builder fallback route keeps fullscreen studio mode", () => {
   )
 })
 
+test("workflow builder router patch supports current production bundle shape", () => {
+  const app =
+    'function App(){return r.jsx(BrowserRouter,{children:r.jsx(ThemeProvider,{defaultTheme:"system",storageKey:"rmn-ui-theme",children:r.jsx(AuthProvider,{children:r.jsx(Routes,{})})})})}'
+
+  expect(patchWorkflowBuilderScript(app)).toContain(
+    'return r.jsx(BrowserRouter,{window:window.__paddie_router_window,children:r.jsx(ThemeProvider,{defaultTheme:"system",storageKey:"rmn-ui-theme"',
+  )
+})
+
 test("workflow builder embed starts on the fullscreen route", () => {
   const boot = workflowBuilderBoot("token", {
     userId: "user",
