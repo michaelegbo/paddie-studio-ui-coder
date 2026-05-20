@@ -100,6 +100,94 @@ describe("buildRequestParts", () => {
     expect(synthetic).toHaveLength(1)
   })
 
+  test("adds Paddie workflow context with generated client code and graph", () => {
+    const result = buildRequestParts({
+      prompt: [{ type: "text", content: "wire this workflow into the app", start: 0, end: 31 }],
+      context: [
+        {
+          key: "workflow:studio_flow_1:javascript",
+          type: "workflow",
+          workflowID: "studio_flow_1",
+          workflowName: "Order triage",
+          description: "Classify incoming orders",
+          status: "active",
+          method: "POST",
+          webhookUrl: "https://api.paddie.io/api/studio/webhooks/studio_wh_1",
+          language: "javascript",
+          code: "export async function runStudioFlow(payload = {}) { return fetch('/webhook') }",
+          nodes: [
+            { id: "n1", type: "webhook", name: "Webhook", config: { method: "POST" } },
+            { id: "n2", type: "ai", name: "Classify", config: { prompt: "Classify order urgency" } },
+          ],
+          edges: [{ id: "e1", source: "n1", target: "n2", condition: "always" }],
+          revision: 4,
+          updatedAt: "2026-05-19T12:00:00.000Z",
+        },
+      ],
+      images: [],
+      text: "wire this workflow into the app",
+      messageID: "msg_workflow",
+      sessionID: "ses_workflow",
+      sessionDirectory: "/repo",
+    })
+
+    const synthetic = result.requestParts.find((part) => part.type === "text" && part.synthetic)
+    expect(synthetic?.type).toBe("text")
+    if (synthetic?.type === "text") {
+      expect(synthetic.text).toContain("Paddie Studio workflow")
+      expect(synthetic.text).toContain("Order triage")
+      expect(synthetic.text).toContain("Generated javascript client code")
+      expect(synthetic.text).toContain("Workflow graph JSON")
+      expect(synthetic.text).toContain("Classify order urgency")
+    }
+  })
+
+  test("adds public website inspiration context as a design reference note", () => {
+    const result = buildRequestParts({
+      prompt: [{ type: "text", content: "make this page feel like the reference", start: 0, end: 39 }],
+      context: [
+        {
+          key: "inspiration:https://example.com/:element:main",
+          type: "inspiration",
+          url: "https://example.com/",
+          pageTitle: "Example",
+          mode: "element",
+          selector: "main > section.hero",
+          label: "section.hero",
+          text: "Design faster",
+          html: "<section class=\"hero\">Design faster</section>",
+          styleSignals: {
+            colors: ["rgb(10, 20, 30)", "rgb(240, 248, 255)"],
+            typography: ["font-size: 48px", "font-family: Inter"],
+            layout: ["display: grid", "gap: 32px"],
+            borders: ["border-radius: 24px"],
+            shadows: ["box-shadow: 0 20px 60px #0003"],
+            transitions: ["transition-duration: 200ms"],
+            animations: ["animation-name: fade-in"],
+            keyframes: ["@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }"],
+          },
+        },
+      ],
+      images: [],
+      text: "make this page feel like the reference",
+      messageID: "msg_inspiration",
+      sessionID: "ses_inspiration",
+      sessionDirectory: "/repo",
+    })
+
+    const synthetic = result.requestParts.find((part) => part.type === "text" && part.synthetic)
+    expect(synthetic?.type).toBe("text")
+    if (synthetic?.type === "text") {
+      expect(synthetic.text).toContain("public website")
+      expect(synthetic.text).toContain("https://example.com/")
+      expect(synthetic.text).toContain("Reference mode: element")
+      expect(synthetic.text).toContain("main > section.hero")
+      expect(synthetic.text).toContain("font-size: 48px")
+      expect(synthetic.text).toContain("@keyframes fade-in")
+      expect(synthetic.text).toContain("Do not copy private assets")
+    }
+  })
+
   test("adds file parts for @mentions inside comment text", () => {
     const result = buildRequestParts({
       prompt: [{ type: "text", content: "look", start: 0, end: 4 }],

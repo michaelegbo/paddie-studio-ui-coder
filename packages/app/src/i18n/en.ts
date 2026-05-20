@@ -754,6 +754,8 @@ export const dict = {
   "settings.general.row.followup.description": "Choose whether follow-up prompts steer immediately or wait in a queue",
   "settings.general.row.followup.option.queue": "Queue",
   "settings.general.row.followup.option.steer": "Steer",
+  "settings.general.row.betaFeatures.title": "Beta features",
+  "settings.general.row.betaFeatures.description": "Show Paddie Studio templates, workbench, and preview tools",
   "settings.general.row.showFileTree.title": "File tree",
   "settings.general.row.showFileTree.description": "Show the file tree toggle and panel in desktop sessions",
   "settings.general.row.showNavigation.title": "Navigation controls",

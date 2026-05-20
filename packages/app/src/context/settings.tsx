@@ -23,6 +23,7 @@ export interface Settings {
     autoSave: boolean
     releaseNotes: boolean
     followup: "queue" | "steer"
+    uiFeaturesUngated: boolean
     showFileTree: boolean
     showNavigation: boolean
     showSearch: boolean
@@ -63,6 +64,7 @@ const terminalFallback =
 const monoBase = monoFallback
 const sansBase = sansFallback
 const terminalBase = terminalFallback
+const defaultUiFeaturesUngated = import.meta.env.VITE_OPENCODE_CHANNEL !== "prod"
 
 function input(font: string | undefined) {
   return font ?? ""
@@ -108,11 +110,12 @@ const defaultSettings: Settings = {
     autoSave: true,
     releaseNotes: true,
     followup: "steer",
-    showFileTree: false,
-    showNavigation: false,
-    showSearch: false,
-    showStatus: false,
-    showTerminal: false,
+    uiFeaturesUngated: defaultUiFeaturesUngated,
+    showFileTree: true,
+    showNavigation: true,
+    showSearch: true,
+    showStatus: true,
+    showTerminal: true,
     showReasoningSummaries: false,
     shellToolPartsExpanded: false,
     editToolPartsExpanded: false,
@@ -153,7 +156,27 @@ function withFallback<T>(read: () => T | undefined, fallback: T) {
 export const { use: useSettings, provider: SettingsProvider } = createSimpleContext({
   name: "Settings",
   init: () => {
-    const [store, setStore, _, ready] = persisted("settings.v3", createStore<Settings>(defaultSettings))
+    const [store, setStore, _, ready] = persisted(
+      {
+        key: "settings.v3",
+        migrate(value) {
+          if (typeof value !== "object" || value === null || Array.isArray(value)) return value
+
+          const general = (value as Record<string, unknown>).general
+          if (typeof general !== "object" || general === null || Array.isArray(general)) return value
+          if (typeof (general as Record<string, unknown>).uiFeaturesUngated === "boolean") return value
+
+          return {
+            ...value,
+            general: {
+              ...general,
+              uiFeaturesUngated: defaultSettings.general.uiFeaturesUngated,
+            },
+          }
+        },
+      },
+      createStore<Settings>(defaultSettings),
+    )
 
     createEffect(() => {
       if (typeof document === "undefined") return
@@ -187,6 +210,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         ),
         setFollowup(value: "queue" | "steer") {
           setStore("general", "followup", value === "queue" ? "steer" : value)
+        },
+        betaFeatures: withFallback(() => store.general?.uiFeaturesUngated, defaultSettings.general.uiFeaturesUngated),
+        setBetaFeatures(value: boolean) {
+          setStore("general", "uiFeaturesUngated", value)
         },
         showFileTree: withFallback(() => store.general?.showFileTree, defaultSettings.general.showFileTree),
         setShowFileTree(value: boolean) {

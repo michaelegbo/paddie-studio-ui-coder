@@ -119,8 +119,6 @@ export const SettingsGeneral: Component = () => {
 
     permission.disableAutoAccept(params.id, value)
   }
-  const desktop = createMemo(() => platform.platform === "desktop")
-
   const check = () => {
     if (!platform.checkUpdate) return
     setStore("checking", true)
@@ -314,6 +312,18 @@ export const SettingsGeneral: Component = () => {
         >
           <div data-action="settings-auto-accept-permissions">
             <Switch checked={accepting()} disabled={!dir()} onChange={toggleAccept} />
+          </div>
+        </SettingsRow>
+
+        <SettingsRow
+          title={language.t("settings.general.row.betaFeatures.title")}
+          description={language.t("settings.general.row.betaFeatures.description")}
+        >
+          <div data-action="settings-beta-features">
+            <Switch
+              checked={settings.general.betaFeatures()}
+              onChange={(checked) => settings.general.setBetaFeatures(checked)}
+            />
           </div>
         </SettingsRow>
 
@@ -775,9 +785,7 @@ export const SettingsGeneral: Component = () => {
           </div>
         </Show>
 
-        <Show when={desktop() && import.meta.env.VITE_OPENCODE_CHANNEL === "beta"}>
-          <AdvancedSection />
-        </Show>
+        <AdvancedSection />
       </div>
     </div>
   )

@@ -4,6 +4,8 @@ import { useParams } from "@solidjs/router"
 import { batch, createMemo, createRoot, getOwner, onCleanup } from "solid-js"
 import { createStore, type SetStoreFunction } from "solid-js/store"
 import type { FileSelection } from "@/context/file"
+import type { InspirationContextPayload } from "@/inspiration/helpers"
+import type { TemplateFile } from "@/template/helpers"
 import { Persist, persisted } from "@/utils/persist"
 
 interface PartBase {
@@ -48,7 +50,69 @@ export type FileContextItem = {
   preview?: string
 }
 
-export type ContextItem = FileContextItem
+export type ElementContextItem = {
+  type: "element"
+  url: string
+  selector: string
+  label: string
+  html: string
+  text?: string
+}
+
+export type TemplateContextItem = {
+  type: "template"
+  templateID: string
+  templateName: string
+  description: string
+  stack: string
+  partID?: string
+  partName?: string
+  hint?: string
+  selector?: string
+  label?: string
+  html?: string
+  text?: string
+  files: TemplateFile[]
+}
+
+export type WorkflowContextItem = {
+  type: "workflow"
+  workflowID: string
+  workflowName: string
+  description?: string
+  status: string
+  method?: string
+  webhookUrl?: string
+  language: "javascript" | "python"
+  code: string
+  nodes: Array<{
+    id: string
+    type: string
+    name: string
+    config?: Record<string, unknown>
+  }>
+  edges: Array<{
+    id: string
+    source: string
+    target: string
+    condition?: string
+    sourceHandle?: string
+    targetHandle?: string
+  }>
+  revision?: number
+  updatedAt?: string
+}
+
+export type InspirationContextItem = InspirationContextPayload & {
+  type: "inspiration"
+}
+
+export type ContextItem =
+  | FileContextItem
+  | ElementContextItem
+  | TemplateContextItem
+  | WorkflowContextItem
+  | InspirationContextItem
 
 export const DEFAULT_PROMPT: Prompt = [{ type: "text", content: "", start: 0, end: 0 }]
 
@@ -101,7 +165,10 @@ function clonePrompt(prompt: Prompt): Prompt {
 }
 
 function contextItemKey(item: ContextItem) {
-  if (item.type !== "file") return item.type
+  if (item.type === "element") return `${item.type}:${item.url}:${item.selector}`
+  if (item.type === "inspiration") return `${item.type}:${item.url}:${item.mode}:${item.selector ?? "page"}`
+  if (item.type === "template") return `${item.type}:${item.templateID}:${item.partID ?? "full"}:${item.selector ?? "part"}`
+  if (item.type === "workflow") return `${item.type}:${item.workflowID}:${item.language}`
   const start = item.selection?.startLine
   const end = item.selection?.endLine
   const key = `${item.type}:${item.path}:${start}:${end}`

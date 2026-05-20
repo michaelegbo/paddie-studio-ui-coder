@@ -17,6 +17,7 @@ const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] a
 const DEFAULT_SIDEBAR_WIDTH = 344
 const DEFAULT_FILE_TREE_WIDTH = 200
 const DEFAULT_SESSION_WIDTH = 600
+const DEFAULT_STUDIO_WIDTH = 820
 const DEFAULT_TERMINAL_HEIGHT = 280
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
 
@@ -44,6 +45,8 @@ type SessionView = {
   pendingMessage?: string
   pendingMessageAt?: number
   todoCollapsed?: boolean
+  studioOpen?: boolean
+  studioChatHidden?: boolean
 }
 
 type TabHandoff = {
@@ -253,6 +256,9 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         session: {
           width: DEFAULT_SESSION_WIDTH,
         },
+        studio: {
+          width: DEFAULT_STUDIO_WIDTH,
+        },
         mobileSidebar: {
           opened: false,
         },
@@ -345,7 +351,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           return
         }
 
-        setStore("sessionView", sessionKey, "scroll", (prev) => ({ ...prev, ...next }))
+        setStore("sessionView", sessionKey, "scroll", (prev) => ({ ...(prev ?? {}), ...next }))
         prune(keep)
       },
     })
@@ -668,6 +674,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setStore("session", "width", width)
         },
       },
+      studio: {
+        width: createMemo(() => store.studio?.width ?? DEFAULT_STUDIO_WIDTH),
+        resize(width: number) {
+          if (!store.studio) {
+            setStore("studio", { width })
+            return
+          }
+          setStore("studio", "width", width)
+        },
+      },
       mobileSidebar: {
         opened: createMemo(() => store.mobileSidebar?.opened ?? false),
         show() {
@@ -728,6 +744,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const s = createMemo(() => store.sessionView[key()] ?? { scroll: {} })
         const terminalOpened = createMemo(() => store.terminal?.opened ?? false)
         const reviewPanelOpened = createMemo(() => store.review?.panelOpened ?? true)
+        const studioOpened = createMemo(() => s().studioOpen ?? false)
+        const studioChatHidden = createMemo(() => s().studioChatHidden ?? false)
 
         function setTerminalOpened(next: boolean) {
           const current = store.terminal
@@ -794,6 +812,66 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             },
             toggle() {
               setReviewPanelOpened(!reviewPanelOpened())
+            },
+          },
+          studio: {
+            opened: studioOpened,
+            open() {
+              const session = key()
+              const current = store.sessionView[session]
+              if (!current) {
+                setStore("sessionView", session, { scroll: {}, studioOpen: true })
+                return
+              }
+              if (current.studioOpen) return
+              setStore("sessionView", session, "studioOpen", true)
+            },
+            close() {
+              const session = key()
+              const current = store.sessionView[session]
+              if (!current?.studioOpen) return
+              setStore("sessionView", session, "studioOpen", false)
+            },
+            toggle() {
+              const session = key()
+              const current = store.sessionView[session]
+              const next = !(current?.studioOpen ?? false)
+              if (!current) {
+                setStore("sessionView", session, { scroll: {}, studioOpen: next })
+                return
+              }
+              setStore("sessionView", session, "studioOpen", next)
+            },
+            chatHidden: studioChatHidden,
+            showChat() {
+              const session = key()
+              const current = store.sessionView[session]
+              if (!current) {
+                setStore("sessionView", session, { scroll: {}, studioChatHidden: false })
+                return
+              }
+              if (!current.studioChatHidden) return
+              setStore("sessionView", session, "studioChatHidden", false)
+            },
+            hideChat() {
+              const session = key()
+              const current = store.sessionView[session]
+              if (!current) {
+                setStore("sessionView", session, { scroll: {}, studioChatHidden: true })
+                return
+              }
+              if (current.studioChatHidden) return
+              setStore("sessionView", session, "studioChatHidden", true)
+            },
+            toggleChat() {
+              const session = key()
+              const current = store.sessionView[session]
+              const next = !(current?.studioChatHidden ?? false)
+              if (!current) {
+                setStore("sessionView", session, { scroll: {}, studioChatHidden: next })
+                return
+              }
+              setStore("sessionView", session, "studioChatHidden", next)
             },
           },
           review: {

@@ -76,6 +76,53 @@ export function Titlebar() {
     const parts = location.pathname.replace(/\/+$/, "").split("/")
     return parts.at(-1) === "session"
   })
+  const session = createMemo(() => {
+    if (!params.dir) return false
+    return location.pathname.replace(/\/+$/, "").split("/").includes("session")
+  })
+  const workbench = createMemo(() => {
+    if (!settings.general.betaFeatures()) return false
+    if (!params.dir) return false
+    const parts = location.pathname.replace(/\/+$/, "").split("/")
+    return parts.at(-1) === "workbench"
+  })
+  const studioKey = createMemo(() => (params.dir ? `${params.dir}${params.id ? "/" + params.id : ""}` : ""))
+  const studioView = layout.view(studioKey)
+  const studio = createMemo(() => {
+    if (!settings.general.betaFeatures()) return false
+    if (!params.dir) return false
+    return studioView.studio.opened()
+  })
+
+  const openStudio = () => {
+    if (!settings.general.betaFeatures()) return
+    if (!params.dir) return
+
+    const target = params.id ? `/${params.dir}/session/${params.id}` : `/${params.dir}/session`
+
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      navigate(`/${params.dir}/workbench`)
+      return
+    }
+
+    if (!session()) {
+      studioView.studio.showChat()
+      studioView.studio.open()
+      navigate(target)
+      return
+    }
+
+    if (studioView.studio.opened()) {
+      studioView.studio.showChat()
+      studioView.studio.close()
+      return
+    }
+
+    layout.fileTree.close()
+    studioView.reviewPanel.close()
+    studioView.studio.showChat()
+    studioView.studio.open()
+  }
 
   createEffect(() => {
     const current = path()
@@ -90,7 +137,7 @@ export function Titlebar() {
   const canBack = createMemo(() => history.index > 0)
   const canForward = createMemo(() => history.index < history.stack.length - 1)
   const hasProjects = createMemo(() => layout.projects.list().length > 0)
-  const nav = createMemo(() => import.meta.env.VITE_OPENCODE_CHANNEL !== "beta" || settings.general.showNavigation())
+  const nav = createMemo(() => settings.general.showNavigation())
 
   const back = () => {
     const next = backPath(history)
@@ -324,6 +371,20 @@ export function Titlebar() {
           data-tauri-drag-region
           onMouseDown={drag}
         >
+          <Show when={params.dir && settings.general.betaFeatures()}>
+            <Tooltip placement="bottom" value="Studio" openDelay={2000}>
+              <Button
+                variant="ghost"
+                class="hidden xl:inline-flex titlebar-icon h-6 px-2 gap-1.5 box-border items-center shrink-0 mr-2"
+                onClick={openStudio}
+                aria-label="Studio"
+                aria-current={workbench() || studio() ? "page" : undefined}
+              >
+                <Icon size="small" name="code" />
+                <span class="text-xs font-medium leading-none">Studio</span>
+              </Button>
+            </Tooltip>
+          </Show>
           <div id="opencode-titlebar-right" class="flex items-center gap-1 shrink-0 justify-end" />
           <Show when={windows()}>
             {!tauriApi() && <div class="shrink-0" style={{ width: windowsControlsWidth() }} />}

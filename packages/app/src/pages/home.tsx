@@ -1,5 +1,6 @@
-import { createMemo, For, Match, Switch } from "solid-js"
+import { createMemo, For, Match, Show, Switch } from "solid-js"
 import { Button } from "@opencode-ai/ui/button"
+import { Dialog } from "@opencode-ai/ui/dialog"
 import { Logo } from "@opencode-ai/ui/logo"
 import { useLayout } from "@/context/layout"
 import { useNavigate } from "@solidjs/router"
@@ -13,6 +14,7 @@ import { DialogSelectServer } from "@/components/dialog-select-server"
 import { useServer } from "@/context/server"
 import { useGlobalSync } from "@/context/global-sync"
 import { useLanguage } from "@/context/language"
+import { useSettings } from "@/context/settings"
 
 export default function Home() {
   const sync = useGlobalSync()
@@ -22,6 +24,7 @@ export default function Home() {
   const navigate = useNavigate()
   const server = useServer()
   const language = useLanguage()
+  const settings = useSettings()
   const homedir = createMemo(() => sync.data.path.home)
   const recent = createMemo(() => {
     return sync.data.project
@@ -37,10 +40,26 @@ export default function Home() {
     return "bg-border-weak-base"
   })
 
-  function openProject(directory: string) {
+  function openProject(directory: string, opts?: { studio?: boolean }) {
+    const dir = base64Encode(directory)
     layout.projects.open(directory)
     server.projects.touch(directory)
-    navigate(`/${base64Encode(directory)}`)
+    if (!opts?.studio || !settings.general.betaFeatures()) {
+      navigate(`/${dir}`)
+      return
+    }
+
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      navigate(`/${dir}/workbench`)
+      return
+    }
+
+    const view = layout.view(dir)
+    layout.fileTree.close()
+    view.reviewPanel.close()
+    view.studio.showChat()
+    view.studio.open()
+    navigate(`/${dir}/session`)
   }
 
   async function chooseProject() {
@@ -68,6 +87,60 @@ export default function Home() {
     }
   }
 
+  async function chooseTemplateProject() {
+    function resolve(result: string | string[] | null) {
+      const directory = Array.isArray(result) ? result[0] : result
+      if (directory) openProject(directory, { studio: true })
+    }
+
+    if (platform.openDirectoryPickerDialog && server.isLocal()) {
+      const result = await platform.openDirectoryPickerDialog({
+        title: "Choose or create a project folder",
+        multiple: false,
+      })
+      resolve(result)
+      return
+    }
+
+    dialog.show(
+      () => (
+        <DialogSelectDirectory
+          title="Choose or create a project folder"
+          multiple={false}
+          onSelect={resolve}
+        />
+      ),
+      () => resolve(null),
+    )
+  }
+
+  function createFromTemplate() {
+    dialog.show(() => (
+      <Dialog title="Create from template" class="w-full max-w-[440px] mx-auto" fit>
+        <div class="flex flex-col gap-5">
+          <div class="text-13-regular text-text-weak">
+            To work with templates, create or choose a project folder first. Paddie will add it to your projects and
+            open Studio so you can pick a starter.
+          </div>
+          <div class="flex items-center justify-end gap-2">
+            <Button variant="ghost" class="px-3" onClick={() => dialog.close()}>
+              Cancel
+            </Button>
+            <Button
+              class="px-3"
+              onClick={() => {
+                dialog.close()
+                void chooseTemplateProject()
+              }}
+            >
+              Choose project folder
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    ))
+  }
+
   return (
     <div class="mx-auto mt-55 w-full md:w-auto px-4">
       <Logo class="md:w-xl opacity-12" />
@@ -93,6 +166,11 @@ export default function Home() {
               <Button icon="folder-add-left" size="normal" class="pl-2 pr-3" onClick={chooseProject}>
                 {language.t("command.project.open")}
               </Button>
+              <Show when={platform.workbench && server.isLocal() && settings.general.betaFeatures()}>
+                <Button icon="layout-right-full" size="normal" class="pl-2 pr-3" onClick={createFromTemplate}>
+                  Create from template
+                </Button>
+              </Show>
             </div>
             <ul class="flex flex-col gap-2">
               <For each={recent()}>
@@ -119,6 +197,11 @@ export default function Home() {
             <Button class="px-3" onClick={chooseProject}>
               {language.t("command.project.open")}
             </Button>
+            <Show when={platform.workbench && server.isLocal() && settings.general.betaFeatures()}>
+              <Button class="px-3" variant="ghost" onClick={createFromTemplate}>
+                Create from template
+              </Button>
+            </Show>
           </div>
         </Match>
         <Match when={true}>
@@ -131,6 +214,11 @@ export default function Home() {
             <Button class="px-3 mt-1" onClick={chooseProject}>
               {language.t("command.project.open")}
             </Button>
+            <Show when={platform.workbench && server.isLocal() && settings.general.betaFeatures()}>
+              <Button class="px-3" variant="ghost" onClick={createFromTemplate}>
+                Create from template
+              </Button>
+            </Show>
           </div>
         </Match>
       </Switch>

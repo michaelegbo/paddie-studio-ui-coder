@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Paddie Studio Beta",
+  "identifier": "io.paddie.studio.beta",
+  "bundle": {
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/beta/32x32.png",
+      "icons/beta/128x128.png",
+      "icons/beta/128x128@2x.png",
+      "icons/beta/icon.icns",
+      "icons/beta/icon.ico"
+    ],
+    "windows": {
+      "signCommand": {
+        "cmd": "powershell",
+        "args": ["-ExecutionPolicy", "Bypass", "-File", "../../../script/sign-windows.ps1", "%1"]
+      },
+      "nsis": {
+        "installerIcon": "icons/beta/icon.ico",
+        "installerHooks": "installer-hooks.nsh"
+      }
+    },
+    "linux": {
+      "rpm": {
+        "compression": {
+          "type": "none"
+        }
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc0NEVFQUU3MDE2NjFEMTcKUldRWEhXWUI1K3BPZEMvTkJUSkF0ZUgrQjY4MTZKNGE0a0U5dFZuRkY0LzRNZTdLUTNzVGJlczcK",
+      "endpoints": ["https://github.com/michaelegbo/paddie-studio-ui-coder/releases/download/beta/latest.json"]
+    }
+  }
+}

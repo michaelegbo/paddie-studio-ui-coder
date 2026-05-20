@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
-import type { Prompt } from "@/context/prompt"
+import type { ContextItem, Prompt } from "@/context/prompt"
 
 let createPromptSubmit: typeof import("./submit").createPromptSubmit
 
@@ -20,10 +20,14 @@ const storedSessions: Record<string, Array<{ id: string; title?: string }>> = {}
 const promoted: Array<{ directory: string; sessionID: string }> = []
 const sentShell: string[] = []
 const syncedDirectories: string[] = []
+const contextItems: (ContextItem & { key: string })[] = []
+const contextAdds: ContextItem[] = []
+const contextRemoves: string[] = []
 
 let params: { id?: string } = {}
 let selected = "/repo/worktree-a"
 let variant: string | undefined
+let promptAsyncError: Error | undefined
 
 const promptValue: Prompt = [{ type: "text", content: "ls", start: 0, end: 2 }]
 
@@ -45,7 +49,10 @@ const clientFor = (directory: string) => {
         return { data: undefined }
       },
       prompt: async () => ({ data: undefined }),
-      promptAsync: async () => ({ data: undefined }),
+      promptAsync: async () => {
+        if (promptAsyncError) throw promptAsyncError
+        return { data: undefined }
+      },
       command: async () => ({ data: undefined }),
       abort: async () => ({ data: undefined }),
     },
@@ -109,9 +116,16 @@ beforeAll(async () => {
       reset: () => undefined,
       set: () => undefined,
       context: {
-        add: () => undefined,
-        remove: () => undefined,
-        items: () => [],
+        add: (item: ContextItem) => {
+          contextAdds.push(item)
+          contextItems.push({ ...item, key: `restored:${contextAdds.length}` })
+        },
+        remove: (key: string) => {
+          contextRemoves.push(key)
+          const index = contextItems.findIndex((item) => item.key === key)
+          if (index >= 0) contextItems.splice(index, 1)
+        },
+        items: () => contextItems,
       },
     }),
   }))
@@ -211,8 +225,12 @@ beforeEach(() => {
   params = {}
   sentShell.length = 0
   syncedDirectories.length = 0
+  contextItems.length = 0
+  contextAdds.length = 0
+  contextRemoves.length = 0
   selected = "/repo/worktree-a"
   variant = undefined
+  promptAsyncError = undefined
   for (const key of Object.keys(storedSessions)) delete storedSessions[key]
 })
 
@@ -341,5 +359,61 @@ describe("prompt submit worktree selection", () => {
 
     expect(storedSessions["/repo/worktree-a"]).toEqual([{ id: "session-1", title: "New session 1" }])
     expect(optimisticSeeded).toEqual([true])
+  })
+
+  test("restores inspiration transient context when prompt send fails", async () => {
+    params = { id: "session-inspiration" }
+    promptAsyncError = new Error("network down")
+    contextItems.push({
+      key: "inspiration:https://example.com/:element:main",
+      type: "inspiration",
+      url: "https://example.com/",
+      pageTitle: "Example",
+      mode: "element",
+      selector: "main > section.hero",
+      label: "section.hero",
+      text: "Hero",
+      html: "<section>Hero</section>",
+      styleSignals: {
+        colors: ["rgb(10, 20, 30)"],
+        typography: [],
+        layout: [],
+        borders: [],
+        shadows: [],
+        transitions: [],
+        animations: [],
+        keyframes: [],
+      },
+    })
+
+    const submit = createPromptSubmit({
+      info: () => ({ id: "session-inspiration" }),
+      imageAttachments: () => [],
+      commentCount: () => 0,
+      autoAccept: () => false,
+      mode: () => "normal",
+      working: () => false,
+      editor: () => undefined,
+      queueScroll: () => undefined,
+      promptLength: (value) => value.reduce((sum, part) => sum + ("content" in part ? part.content.length : 0), 0),
+      addToHistory: () => undefined,
+      resetHistoryNavigation: () => undefined,
+      setMode: () => undefined,
+      setPopover: () => undefined,
+      onSubmit: () => undefined,
+    })
+
+    await submit.handleSubmit({ preventDefault: () => undefined } as unknown as Event)
+    for (let i = 0; i < 20 && contextAdds.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    expect(contextRemoves).toContain("inspiration:https://example.com/:element:main")
+    expect(contextAdds).toHaveLength(1)
+    expect(contextAdds[0]).toMatchObject({
+      type: "inspiration",
+      url: "https://example.com/",
+      selector: "main > section.hero",
+    })
   })
 })

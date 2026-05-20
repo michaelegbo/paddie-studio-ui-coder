@@ -223,6 +223,7 @@ export function formatKeybind(config: string, t?: (key: KeyLabel) => string): st
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false
+  if (target.closest("[data-workbench-editor], .monaco-editor")) return true
   if (target.isContentEditable) return true
   if (target.closest("[contenteditable='true']")) return true
   if (target.closest("input, textarea, select")) return true

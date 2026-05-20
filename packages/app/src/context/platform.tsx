@@ -8,6 +8,30 @@ type OpenDirectoryPickerOptions = { title?: string; multiple?: boolean }
 type OpenFilePickerOptions = { title?: string; multiple?: boolean; accept?: string[]; extensions?: string[] }
 type SaveFilePickerOptions = { title?: string; defaultPath?: string }
 type UpdateInfo = { updateAvailable: boolean; version?: string }
+type WorkbenchEntry = {
+  name: string
+  path: string
+  dir: boolean
+  file: boolean
+  size: number
+  mtime: number | null
+}
+type WorkbenchEvent = {
+  paths: string[]
+}
+type WorkbenchSeed = {
+  path: string
+  content: string
+}
+type Workbench = {
+  list(path: string): Promise<WorkbenchEntry[]>
+  stat(path: string): Promise<WorkbenchEntry | null>
+  read(path: string): Promise<string>
+  write(path: string, data: string): Promise<void>
+  previewUrl?(path: string): Promise<string | null>
+  watch(path: string, cb: (event: WorkbenchEvent) => void): Promise<VoidFunction>
+  create(input: { parent: string; name: string; files: WorkbenchSeed[] }): Promise<string>
+}
 
 export type Platform = {
   /** Platform discriminator */
@@ -87,6 +111,9 @@ export type Platform = {
 
   /** Read image from clipboard (desktop only) */
   readClipboardImage?(): Promise<File | null>
+
+  /** Local file/workbench APIs (desktop only) */
+  workbench?: Workbench
 }
 
 export type DisplayBackend = "auto" | "wayland"

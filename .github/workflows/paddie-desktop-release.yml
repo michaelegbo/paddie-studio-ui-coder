@@ -1,0 +1,227 @@
+name: paddie-desktop-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Release channel"
+        required: true
+        type: choice
+        options:
+          - stable
+          - beta
+          - dev
+      version:
+        description: "Desktop version, without leading v"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OPENCODE_VERSION: ${{ inputs.version }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+      AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+      AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: azure/login@v2
+        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' }}
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate updater signing secrets
+        shell: pwsh
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            throw "TAURI_SIGNING_PRIVATE_KEY is required"
+          }
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) {
+            throw "TAURI_SIGNING_PRIVATE_KEY_PASSWORD is required"
+          }
+
+      - name: Set desktop version
+        shell: pwsh
+        run: |
+          $packagePath = "packages/desktop/package.json"
+          $package = Get-Content -Raw -LiteralPath $packagePath | ConvertFrom-Json
+          $package.version = "${{ inputs.version }}"
+          $package | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $packagePath
+
+          $cargoPath = "packages/desktop/src-tauri/Cargo.toml"
+          $cargo = Get-Content -Raw -LiteralPath $cargoPath
+          $cargo = $cargo -replace '(?m)^version = "[^"]+"', 'version = "${{ inputs.version }}"'
+          Set-Content -LiteralPath $cargoPath -Value $cargo
+
+          Push-Location packages/desktop/src-tauri
+          cargo update -p opencode-desktop
+          Pop-Location
+
+      - name: Reinstall dependencies for Bun compile
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue
+          Get-ChildItem -LiteralPath packages -Directory | ForEach-Object {
+            Remove-Item -Recurse -Force (Join-Path $_.FullName "node_modules") -ErrorAction SilentlyContinue
+          }
+          bun install
+
+      - name: Build sidecar CLI
+        shell: pwsh
+        run: |
+          bun ./packages/opencode/script/build.ts --single --baseline
+          New-Item -ItemType Directory -Force -Path packages/desktop/src-tauri/sidecars | Out-Null
+          $binary = Get-ChildItem -LiteralPath packages/opencode/dist -Recurse -Filter opencode.exe |
+            Where-Object { $_.FullName -match "opencode-windows-x64" } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $binary) {
+            throw "No Windows opencode.exe sidecar was produced"
+          }
+          Copy-Item `
+            -LiteralPath $binary.FullName `
+            -Destination packages/desktop/src-tauri/sidecars/opencode-cli-x86_64-pc-windows-msvc.exe `
+            -Force
+
+      - name: Build Tauri installer
+        shell: pwsh
+        env:
+          RUST_TARGET: x86_64-pc-windows-msvc
+          TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
+        run: |
+          $channel = "${{ inputs.channel }}"
+          $env:OPENCODE_CHANNEL = if ($channel -eq "beta") { "beta" } elseif ($channel -eq "dev") { "dev" } else { "prod" }
+          $env:VITE_OPENCODE_CHANNEL = $env:OPENCODE_CHANNEL
+          $config = if ($channel -eq "beta") { "src-tauri/tauri.beta.conf.json" } elseif ($channel -eq "dev") { "src-tauri/tauri.conf.json" } else { "src-tauri/tauri.prod.conf.json" }
+          bun run --cwd packages/desktop tauri build --target x86_64-pc-windows-msvc --bundles nsis --config $config
+
+      - name: Prepare release assets
+        id: assets
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}"
+          $channel = "${{ inputs.channel }}"
+          $isBeta = $channel -eq "beta"
+          $isDev = $channel -eq "dev"
+          $bundleDir = "packages/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          $exe = Get-ChildItem -LiteralPath $bundleDir -Filter "*setup.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) {
+            throw "No NSIS installer found in $bundleDir"
+          }
+
+          $signature = Get-ChildItem -LiteralPath $bundleDir -Filter "*.sig" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $signature) {
+            throw "No Tauri updater signature found in $bundleDir"
+          }
+
+          $releaseDir = Join-Path $env:RUNNER_TEMP "paddie-desktop-release"
+          New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+
+          $assetName = if ($isBeta) {
+            "PaddieStudioBeta_${version}_x64-setup.exe"
+          } elseif ($isDev) {
+            "PaddieStudioDev_${version}_x64-setup.exe"
+          } else {
+            "PaddieStudio_${version}_x64-setup.exe"
+          }
+          $assetPath = Join-Path $releaseDir $assetName
+          $signaturePath = Join-Path $releaseDir "$assetName.sig"
+          $manifestPath = Join-Path $releaseDir "latest.json"
+          Copy-Item -LiteralPath $exe.FullName -Destination $assetPath -Force
+          Copy-Item -LiteralPath $signature.FullName -Destination $signaturePath -Force
+
+          $url = "https://github.com/${{ github.repository }}/releases/download/v$version/$assetName"
+          $entry = [ordered]@{
+            signature = (Get-Content -Raw -LiteralPath $signature.FullName).Trim()
+            url = $url
+          }
+          [ordered]@{
+            version = $version
+            notes = "Paddie Studio $version"
+            pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = [ordered]@{
+              "windows-x86_64" = $entry
+              "windows-x86_64-nsis" = $entry
+            }
+          } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath
+
+          "asset=$assetPath" >> $env:GITHUB_OUTPUT
+          "signature=$signaturePath" >> $env:GITHUB_OUTPUT
+          "manifest=$manifestPath" >> $env:GITHUB_OUTPUT
+          "asset_name=$assetName" >> $env:GITHUB_OUTPUT
+
+      - name: Publish GitHub release
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}"
+          $channel = "${{ inputs.channel }}"
+          $tag = "v$version"
+          $isBeta = $channel -eq "beta"
+          $isDev = $channel -eq "dev"
+          $title = if ($isBeta) { "Paddie Studio $version Beta" } elseif ($isDev) { "Paddie Studio $version Dev" } else { "Paddie Studio $version" }
+          $notes = @"
+          ## Desktop
+          - Windows installer built by GitHub Actions.
+          - Tauri updater manifest and signature included.
+          "@
+
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            $releaseArgs = @("release", "create", $tag, "--repo", $env:GITHUB_REPOSITORY, "--target", $env:GITHUB_SHA, "--title", $title, "--notes", $notes)
+            if ($isBeta -or $isDev) {
+              $releaseArgs += "--prerelease"
+            }
+            gh @releaseArgs
+          }
+
+          gh release upload $tag `
+            "${{ steps.assets.outputs.asset }}" `
+            "${{ steps.assets.outputs.signature }}" `
+            "${{ steps.assets.outputs.manifest }}" `
+            --clobber `
+            --repo $env:GITHUB_REPOSITORY
+
+          if ($isBeta -or $isDev) {
+            $rollingTag = if ($isBeta) { "beta" } else { "dev" }
+            $rollingTitle = if ($isBeta) { "Paddie Studio Beta Channel" } else { "Paddie Studio Dev Channel" }
+            $rollingNotes = if ($isBeta) { "Rolling beta update manifest." } else { "Rolling dev update manifest." }
+
+            git tag -f $rollingTag $env:GITHUB_SHA
+            git push origin "refs/tags/$rollingTag" --force
+
+            gh release view $rollingTag --repo $env:GITHUB_REPOSITORY *> $null
+            if ($LASTEXITCODE -ne 0) {
+              gh release create $rollingTag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $rollingTitle --notes $rollingNotes --prerelease
+            }
+
+            gh release upload $rollingTag "${{ steps.assets.outputs.manifest }}" --clobber --repo $env:GITHUB_REPOSITORY
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paddie-desktop-${{ inputs.channel }}-${{ inputs.version }}
+          path: |
+            ${{ steps.assets.outputs.asset }}
+            ${{ steps.assets.outputs.signature }}
+            ${{ steps.assets.outputs.manifest }}
