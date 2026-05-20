@@ -139,7 +139,7 @@ export const workflowBuilderBoot = (token: string, user: AuthUser) => `<script>
   }
 
   const css = document.createElement("style")
-  css.textContent = "html,body,#root{height:100%;min-height:100%;width:100%;}body{margin:0;background:#09090b;}#root{background:#09090b;}"
+  css.textContent = "html,body,#root{height:100%;min-height:100%;width:100%;}body{margin:0;background:#09090b;}#root{background:#09090b;}#root>.text-sm.text-zinc-400:only-child{display:none!important;}"
   document.head.appendChild(css)
 
   const size = () => window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")))
@@ -267,7 +267,7 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
   )
   const [fail, setFail] = createSignal<string>()
   const [wide, setWide] = createSignal(false)
-  const [ready, setReady] = createSignal(false)
+  const [, setReady] = createSignal(false)
   const [rev, setRev] = createSignal(0)
   const [frameUrl, setFrameUrl] = createSignal<string>()
   const [selectedFlowId, setSelectedFlowId] = createSignal("")
@@ -552,11 +552,7 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
       >
         <Show
           when={!platform.fetch || frameUrl()}
-          fallback={
-            <div class="min-h-0 flex-1 flex items-center justify-center text-13-medium text-text-weak">
-              Loading Workflow Builder...
-            </div>
-          }
+          fallback={<div class="min-h-0 flex-1 bg-[#09090b]" />}
         >
           <div class="relative min-h-0 flex-1 overflow-hidden bg-[#09090b]">
             <iframe
@@ -573,14 +569,6 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
               title="Workflow Builder"
               allow="clipboard-read; clipboard-write; fullscreen"
             />
-            <Show when={!ready()}>
-              <div class="absolute inset-0 z-10 flex items-center justify-center bg-background-base">
-                <div class="rounded-xl border border-border-weaker-base bg-surface-base px-4 py-3 text-center shadow-[var(--shadow-lg-border-base)]">
-                  <div class="text-13-medium text-text-base">Loading Workflow Builder...</div>
-                  <div class="mt-1 text-11-medium text-text-weak">Starting the embedded studio</div>
-                </div>
-              </div>
-            </Show>
             <Show when={fail()}>
               {(msg) => (
                 <div class="pointer-events-none absolute right-3 bottom-3 z-10 max-w-[min(420px,calc(100%-1.5rem))]">
