@@ -14,6 +14,11 @@ if ($env:GITHUB_ACTIONS -ne "true") {
   exit 0
 }
 
+if ($env:WINDOWS_SIGNING_ENABLED -ne "true") {
+  Write-Host "Skipping Windows signing because WINDOWS_SIGNING_ENABLED is not true"
+  exit 0
+}
+
 $vars = @{
   endpoint = $env:AZURE_TRUSTED_SIGNING_ENDPOINT
   account = $env:AZURE_TRUSTED_SIGNING_ACCOUNT_NAME
