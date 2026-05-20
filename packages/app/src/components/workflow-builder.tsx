@@ -10,7 +10,6 @@ import {
   onCleanup,
   onMount,
   Show,
-  Suspense,
 } from "solid-js"
 import { type AuthUser, useAuth } from "@/context/auth"
 import { usePlatform } from "@/context/platform"
@@ -18,6 +17,7 @@ import { paddieApi } from "@/lib/paddie-api"
 import { PADDIE_APP_ORIGIN, WORKFLOW_BUILDER_URL } from "@/lib/paddie-links"
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+const esc = (value: string) => value.replace(/<\/(script|style)/gi, "<\\/$1")
 const full =
   /([A-Za-z_$][\w$]*)\.jsx\(([A-Za-z_$][\w$]*),\{path:"\/studio\/fullscreen",element:\1\.jsx\(([A-Za-z_$][\w$]*),\{children:\1\.jsx\(([A-Za-z_$][\w$]*),\{autoFullscreen:!0\}\)\}\)\}\)/
 const api = /([A-Za-z_$][\w$]*)="\/api",([A-Za-z_$][\w$]*)=([A-Za-z_$][\w$]*)\.create\(\{baseURL:\1/
@@ -81,7 +81,7 @@ function route(value: string) {
   return value.replace(
     full,
     (match, jsx, tag, gate, studio) =>
-      `${match},${jsx}.jsx(${tag},{path:"*",element:${jsx}.jsx(${gate},{children:${jsx}.jsx(${studio},{autoFullscreen:!0})})})`,
+      `${match},${jsx}.jsx(${tag},{path:"*",element:${jsx}.jsx(${gate},{children:${jsx}.jsx(${studio},{})})})`,
   )
 }
 
@@ -95,12 +95,6 @@ function router(value: string) {
 
 export function patchWorkflowBuilderScript(value: string) {
   return router(route(origin(host(value))))
-}
-
-export function workflowBuilderEmbedUrl() {
-  const url = new URL(WORKFLOW_BUILDER_URL)
-  url.searchParams.set("desktop_embed", "1")
-  return url.href
 }
 
 export const workflowBuilderBoot = (token: string, user: AuthUser) => `<script>
@@ -127,7 +121,7 @@ export const workflowBuilderBoot = (token: string, user: AuthUser) => `<script>
   localStorage.setItem("paddie_studio_token", token)
   window.__paddie_app_origin = app
 
-  const loc = new URL("/studio/fullscreen", app)
+  const loc = new URL("/studio/embed", app)
   const move = (url) => {
     if (!url) return
     loc.href = new URL(String(url), loc.href).href
@@ -194,6 +188,48 @@ export const workflowBuilderBoot = (token: string, user: AuthUser) => `<script>
 })()
 </script>`
 
+async function text(fetcher: typeof fetch, url: string) {
+  const res = await fetcher(url, { cache: "no-store" })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.text()
+}
+
+async function source(fetcher: typeof fetch, token: string, user: AuthUser) {
+  const html = await text(fetcher, WORKFLOW_BUILDER_URL)
+  const doc = new DOMParser().parseFromString(html, "text/html")
+  const styles = await Promise.all(
+    Array.from(doc.querySelectorAll('link[rel="stylesheet"][href]')).map((el) =>
+      text(fetcher, new URL(el.getAttribute("href") ?? "", PADDIE_APP_ORIGIN).href),
+    ),
+  )
+  const scripts = await Promise.all(
+    Array.from(doc.querySelectorAll("script[src]")).map((el) =>
+      text(fetcher, new URL(el.getAttribute("src") ?? "", PADDIE_APP_ORIGIN).href),
+    ),
+  )
+  const patched = scripts.map(patchWorkflowBuilderScript)
+  if (!patched.some((value) => value.includes("__paddie_router_window"))) {
+    throw new Error("Workflow Builder router not found")
+  }
+  if (!patched.some((value) => value.includes(`${PADDIE_APP_ORIGIN}/api`))) {
+    throw new Error("Workflow Builder API base not found")
+  }
+
+  doc.querySelectorAll('link[rel="stylesheet"][href], script[src]').forEach((el) => el.remove())
+
+  return `<!doctype html>
+<html>
+<head>
+${workflowBuilderBoot(token, user)}
+<base href="${PADDIE_APP_ORIGIN}/">
+${doc.head.innerHTML}
+${styles.map((css) => `<style>${esc(css)}</style>`).join("\n")}
+</head>
+${doc.body.outerHTML}
+${patched.map((js) => `<script type="module">${esc(js)}</script>`).join("\n")}
+</html>`
+}
+
 export function WorkflowBuilder(props: { onAttachWorkflow?: (payload: WorkflowAttachPayload) => void }) {
   return (
     <ErrorBoundary
@@ -209,9 +245,7 @@ export function WorkflowBuilder(props: { onAttachWorkflow?: (payload: WorkflowAt
         </div>
       )}
     >
-      <Suspense fallback={<div class="h-[calc(100vh-12rem)] min-h-[760px] rounded-[20px] bg-[#09090b]" />}>
-        <WorkflowBuilderFrame onAttachWorkflow={props.onAttachWorkflow} />
-      </Suspense>
+      <WorkflowBuilderFrame onAttachWorkflow={props.onAttachWorkflow} />
     </ErrorBoundary>
   )
 }
@@ -221,9 +255,18 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
   const platform = usePlatform()
   let box: HTMLDivElement | undefined
   let frame: HTMLIFrameElement | undefined
-  let readyTimeout: number | undefined
-  let authTimers: number[] = []
 
+  const [doc, api] = createResource(
+    () => {
+      const token = auth.token()
+      const user = auth.user()
+      if (!token) return
+      if (!user) return
+      if (!platform.fetch) return
+      return { token, user, fetcher: platform.fetch }
+    },
+    (input) => source(input.fetcher, input.token, input.user),
+  )
   const [flowRev, setFlowRev] = createSignal(0)
   const [flows, flowsApi] = createResource(
     () => {
@@ -235,13 +278,13 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
   const [fail, setFail] = createSignal<string>()
   const [wide, setWide] = createSignal(false)
   const [ready, setReady] = createSignal(false)
+  const [rev, setRev] = createSignal(0)
   const [selectedFlowId, setSelectedFlowId] = createSignal("")
   const [attaching, setAttaching] = createSignal(false)
   const [zoom, setZoom] = createSignal(70)
   const scale = createMemo(() => zoom() / 100)
   const size = createMemo(() => `${100 / scale()}%`)
   const pct = createMemo(() => `${zoom()}%`)
-  const frameSrc = createMemo(() => (platform.fetch ? workflowBuilderEmbedUrl() : WORKFLOW_BUILDER_URL))
   const selectedFlow = createMemo(() => {
     const list = flows() ?? []
     return list.find((item) => item.id === selectedFlowId()) ?? list[0]
@@ -269,7 +312,13 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
     setReady(false)
     setFlowRev((value) => value + 1)
     void flowsApi.refetch()
-    if (frame) frame.src = frameSrc()
+    if (platform.fetch) {
+      setRev((value) => value + 1)
+      void api.refetch()
+      pulse()
+      return
+    }
+    if (frame) frame.src = WORKFLOW_BUILDER_URL
     pulse()
   }
   const collapse = () => {
@@ -296,56 +345,12 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
   const out = () => apply(zoom() - 10)
   const zin = () => apply(zoom() + 10)
   const reset = () => apply(70)
-  const clearReadyTimeout = () => {
-    if (readyTimeout === undefined) return
-    window.clearTimeout(readyTimeout)
-    readyTimeout = undefined
-  }
-  const clearAuthTimers = () => {
-    authTimers.forEach((timer) => window.clearTimeout(timer))
-    authTimers = []
-  }
   const markReady = () => {
-    clearReadyTimeout()
-    clearAuthTimers()
     setFail()
     setReady(true)
   }
-  const postAuth = () => {
-    const user = auth.user()
-    const token = auth.token()
-    if (!platform.fetch || !frame?.contentWindow || !user || !token) return
-    frame.contentWindow.postMessage(
-      {
-        source: "paddie-workflow-host",
-        type: "paddie-studio:auth",
-        token,
-        user: {
-          id: user.userId,
-          email: user.email,
-          name: user.email,
-          tenant_id: user.tenantId,
-        },
-      },
-      PADDIE_APP_ORIGIN,
-    )
-  }
-  const startAuthHandshake = () => {
-    if (!platform.fetch) return
-    clearReadyTimeout()
-    clearAuthTimers()
-    postAuth()
-    authTimers = [100, 300, 700, 1500, 3000].map((delay) => window.setTimeout(postAuth, delay))
-    readyTimeout = window.setTimeout(() => {
-      if (ready()) return
-      setFail("Workflow Builder did not report ready. Refresh the panel or open it in the browser.")
-    }, 10000)
-  }
   const loaded = () => {
-    if (platform.fetch) startAuthHandshake()
-    else markReady()
-    setFlowRev((value) => value + 1)
-    void flowsApi.refetch()
+    markReady()
     pulse()
   }
 
@@ -392,13 +397,8 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
     const listen = (event: MessageEvent) => {
       if (frame && event.source !== frame.contentWindow) return
       const data = event.data as { source?: string; type?: string; message?: string }
-      if (data.type === "paddie-studio:auth-needed") {
-        postAuth()
-        return
-      }
       if (data.type === "paddie-studio:fullscreen-route-ready") {
         markReady()
-        setFlowRev((value) => value + 1)
         void flowsApi.refetch()
         pulse()
         return
@@ -418,8 +418,6 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
     document.addEventListener("fullscreenchange", sync)
     window.addEventListener("keydown", press)
     onCleanup(() => {
-      clearReadyTimeout()
-      clearAuthTimers()
       window.removeEventListener("message", listen)
       document.removeEventListener("fullscreenchange", sync)
       window.removeEventListener("keydown", press)
@@ -527,17 +525,37 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
         </Button>
       </div>
 
-      <Show when={!platform.fetch || (auth.token() && auth.user())} fallback={<div class="min-h-0 flex-1 bg-[#09090b]" />}>
+      <Show
+        when={!doc.error}
+        fallback={
+          <div class="min-h-0 flex-1 p-4 flex items-center justify-center text-center">
+            <div class="max-w-md">
+              <div class="text-14-medium text-text-base">Workflow Builder could not load</div>
+              <div class="mt-2 text-12-medium text-text-weak">
+                {doc.error instanceof Error ? doc.error.message : "The embedded studio did not respond."}
+              </div>
+              <Button class="mt-4 h-9 px-3 text-12-medium" onClick={refresh}>
+                Retry
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        <Show
+          when={!platform.fetch || doc()}
+          fallback={
+            <div class="min-h-0 flex-1 flex items-center justify-center text-13-medium text-text-weak">
+              Loading Workflow Builder...
+            </div>
+          }
+        >
           <div class="relative min-h-0 flex-1 overflow-hidden bg-[#09090b]">
             <iframe
               ref={frame}
               onLoad={loaded}
-              src={frameSrc()}
-              class="absolute left-0 top-0 block border-0 bg-[#09090b] transition-opacity duration-100"
-              classList={{
-                "opacity-0": platform.fetch && !ready(),
-                "opacity-100": !platform.fetch || ready(),
-              }}
+              src={platform.fetch ? undefined : WORKFLOW_BUILDER_URL}
+              srcdoc={platform.fetch ? `${doc()}\n<!-- paddie:${rev()} -->` : undefined}
+              class="absolute left-0 top-0 block border-0 bg-[#09090b]"
               style={{
                 background: "#09090b",
                 "color-scheme": "dark",
@@ -549,6 +567,14 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
               title="Workflow Builder"
               allow="clipboard-read; clipboard-write; fullscreen"
             />
+            <Show when={!ready()}>
+              <div class="absolute inset-0 z-10 flex items-center justify-center bg-[#09090b]">
+                <div class="rounded-xl border border-border-weaker-base bg-surface-base px-4 py-3 text-center shadow-[var(--shadow-lg-border-base)]">
+                  <div class="text-13-medium text-text-base">Loading Workflow Builder...</div>
+                  <div class="mt-1 text-11-medium text-text-weak">Starting the embedded studio</div>
+                </div>
+              </div>
+            </Show>
             <Show when={fail()}>
               {(msg) => (
                 <div class="pointer-events-none absolute right-3 bottom-3 z-10 max-w-[min(420px,calc(100%-1.5rem))]">
@@ -568,6 +594,7 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
               )}
             </Show>
           </div>
+        </Show>
       </Show>
     </div>
   )

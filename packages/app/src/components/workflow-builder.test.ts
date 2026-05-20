@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test"
-import { patchWorkflowBuilderScript, workflowBuilderBoot, workflowBuilderEmbedUrl } from "./workflow-builder"
+import { patchWorkflowBuilderScript, workflowBuilderBoot } from "./workflow-builder"
 
 test("workflow builder fallback route keeps fullscreen studio mode", () => {
   const route =
     'return R.jsx(Route,{path:"/studio/fullscreen",element:R.jsx(Gate,{children:R.jsx(Studio,{autoFullscreen:!0})})})'
 
   expect(patchWorkflowBuilderScript(route)).toContain(
-    `${route},R.jsx(Route,{path:"*",element:R.jsx(Gate,{children:R.jsx(Studio,{autoFullscreen:!0})})})`,
+    `${route},R.jsx(Route,{path:"*",element:R.jsx(Gate,{children:R.jsx(Studio,{})})})`,
   )
 })
 
@@ -19,19 +19,15 @@ test("workflow builder router patch supports current production bundle shape", (
   )
 })
 
-test("workflow builder embed starts on the fullscreen route", () => {
+test("workflow builder embed starts on the stable embedded route", () => {
   const boot = workflowBuilderBoot("token", {
     userId: "user",
     email: "user@example.com",
     tenantId: "tenant",
   })
 
-  expect(boot).toContain('const loc = new URL("/studio/fullscreen", app)')
+  expect(boot).toContain('const loc = new URL("/studio/embed", app)')
   expect(boot).toContain("background:#09090b!important")
   expect(boot).toContain("color-scheme:dark")
-  expect(boot).not.toContain("/studio/embed")
-})
-
-test("workflow builder direct desktop embed uses hosted fullscreen route", () => {
-  expect(workflowBuilderEmbedUrl()).toBe("https://app.paddie.io/studio/fullscreen?desktop_embed=1")
+  expect(boot).not.toContain("desktop_embed")
 })
