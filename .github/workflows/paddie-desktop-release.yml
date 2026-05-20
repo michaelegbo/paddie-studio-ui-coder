@@ -10,6 +10,7 @@ on:
         options:
           - stable
           - beta
+          - dev
       version:
         description: "Desktop version, without leading v"
         required: true
@@ -109,10 +110,10 @@ jobs:
           RUST_TARGET: x86_64-pc-windows-msvc
           TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
         run: |
-          $isBeta = "${{ inputs.channel }}" -eq "beta"
-          $env:OPENCODE_CHANNEL = if ($isBeta) { "beta" } else { "prod" }
+          $channel = "${{ inputs.channel }}"
+          $env:OPENCODE_CHANNEL = if ($channel -eq "beta") { "beta" } elseif ($channel -eq "dev") { "dev" } else { "prod" }
           $env:VITE_OPENCODE_CHANNEL = $env:OPENCODE_CHANNEL
-          $config = if ($isBeta) { "src-tauri/tauri.beta.conf.json" } else { "src-tauri/tauri.prod.conf.json" }
+          $config = if ($channel -eq "beta") { "src-tauri/tauri.beta.conf.json" } elseif ($channel -eq "dev") { "src-tauri/tauri.conf.json" } else { "src-tauri/tauri.prod.conf.json" }
           bun run --cwd packages/desktop tauri build --target x86_64-pc-windows-msvc --bundles nsis --config $config
 
       - name: Prepare release assets
@@ -120,7 +121,9 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ inputs.version }}"
-          $isBeta = "${{ inputs.channel }}" -eq "beta"
+          $channel = "${{ inputs.channel }}"
+          $isBeta = $channel -eq "beta"
+          $isDev = $channel -eq "dev"
           $bundleDir = "packages/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
           $exe = Get-ChildItem -LiteralPath $bundleDir -Filter "*setup.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $exe) {
@@ -137,6 +140,8 @@ jobs:
 
           $assetName = if ($isBeta) {
             "PaddieStudioBeta_${version}_x64-setup.exe"
+          } elseif ($isDev) {
+            "PaddieStudioDev_${version}_x64-setup.exe"
           } else {
             "PaddieStudio_${version}_x64-setup.exe"
           }
@@ -170,9 +175,11 @@ jobs:
         shell: pwsh
         run: |
           $version = "${{ inputs.version }}"
+          $channel = "${{ inputs.channel }}"
           $tag = "v$version"
-          $isBeta = "${{ inputs.channel }}" -eq "beta"
-          $title = if ($isBeta) { "Paddie Studio $version Beta" } else { "Paddie Studio $version" }
+          $isBeta = $channel -eq "beta"
+          $isDev = $channel -eq "dev"
+          $title = if ($isBeta) { "Paddie Studio $version Beta" } elseif ($isDev) { "Paddie Studio $version Dev" } else { "Paddie Studio $version" }
           $notes = @"
           ## Desktop
           - Windows installer built by GitHub Actions.
@@ -182,7 +189,7 @@ jobs:
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -ne 0) {
             $releaseArgs = @("release", "create", $tag, "--repo", $env:GITHUB_REPOSITORY, "--target", $env:GITHUB_SHA, "--title", $title, "--notes", $notes)
-            if ($isBeta) {
+            if ($isBeta -or $isDev) {
               $releaseArgs += "--prerelease"
             }
             gh @releaseArgs
@@ -195,16 +202,20 @@ jobs:
             --clobber `
             --repo $env:GITHUB_REPOSITORY
 
-          if ($isBeta) {
-            git tag -f beta $env:GITHUB_SHA
-            git push origin refs/tags/beta --force
+          if ($isBeta -or $isDev) {
+            $rollingTag = if ($isBeta) { "beta" } else { "dev" }
+            $rollingTitle = if ($isBeta) { "Paddie Studio Beta Channel" } else { "Paddie Studio Dev Channel" }
+            $rollingNotes = if ($isBeta) { "Rolling beta update manifest." } else { "Rolling dev update manifest." }
 
-            gh release view beta --repo $env:GITHUB_REPOSITORY *> $null
+            git tag -f $rollingTag $env:GITHUB_SHA
+            git push origin "refs/tags/$rollingTag" --force
+
+            gh release view $rollingTag --repo $env:GITHUB_REPOSITORY *> $null
             if ($LASTEXITCODE -ne 0) {
-              gh release create beta --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Paddie Studio Beta Channel" --notes "Rolling beta update manifest." --prerelease
+              gh release create $rollingTag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $rollingTitle --notes $rollingNotes --prerelease
             }
 
-            gh release upload beta "${{ steps.assets.outputs.manifest }}" --clobber --repo $env:GITHUB_REPOSITORY
+            gh release upload $rollingTag "${{ steps.assets.outputs.manifest }}" --clobber --repo $env:GITHUB_REPOSITORY
           }
 
       - uses: actions/upload-artifact@v4

@@ -28,6 +28,7 @@
     "macOSPrivateApi": true
   },
   "bundle": {
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/dev/32x32.png",
       "icons/dev/128x128.png",
@@ -66,6 +67,10 @@
       "desktop": {
         "schemes": ["paddiestudio"]
       }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc0NEVFQUU3MDE2NjFEMTcKUldRWEhXWUI1K3BPZEMvTkJUSkF0ZUgrQjY4MTZKNGE0a0U5dFZuRkY0LzRNZTdLUTNzVGJlczcK",
+      "endpoints": ["https://github.com/michaelegbo/paddie-studio-ui-coder/releases/download/dev/latest.json"]
     }
   }
 }

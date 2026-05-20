@@ -34,20 +34,6 @@ describe("pty shell args", () => {
     )
   }
 
-  const npm = Bun.which("npm")
-  if (npm) {
-    it.instance(
-      "starts PATH command shims",
-      () =>
-        Effect.gen(function* () {
-          const info = yield* createPty({ command: "npm", args: ["--version"], title: "npm" })
-          expect(info.command).toBe("npm")
-          expect(info.args).toEqual(["--version"])
-        }),
-      { timeout: 30000 },
-    )
-  }
-
   const bash = (() => {
     const shell = Shell.preferred()
     if (Shell.name(shell) === "bash") return shell

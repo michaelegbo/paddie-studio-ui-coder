@@ -6,31 +6,17 @@ import { EffectBridge } from "@/effect/bridge"
 import { lazy } from "@opencode-ai/core/util/lazy"
 import { Plugin } from "@/plugin"
 import { Shell } from "@/shell/shell"
-import { which } from "@/util/which"
 import type { Proc } from "#pty"
 import * as Log from "@opencode-ai/core/util/log"
 import { PtyID } from "./schema"
 import { Effect, Layer, Context, Schema, Types } from "effect"
 import { NonNegativeInt, PositiveInt } from "@opencode-ai/core/schema"
-import path from "path"
 
 const log = Log.create({ service: "pty" })
 
 const BUFFER_LIMIT = 1024 * 1024 * 2
 const BUFFER_CHUNK = 64 * 1024
-const WINDOWS_SCRIPT = new Set([".bat", ".cmd"])
 const encoder = new TextEncoder()
-
-function spawnCommand(command: string, args: string[], env: NodeJS.ProcessEnv) {
-  if (process.platform !== "win32") return { command, args }
-  const resolved =
-    path.isAbsolute(command) || command.includes("\\") || command.includes("/") ? command : which(command, env) || command
-  if (!WINDOWS_SCRIPT.has(path.extname(resolved).toLowerCase())) return { command: resolved, args }
-  return {
-    command: env.COMSPEC || env.ComSpec || process.env.COMSPEC || "cmd.exe",
-    args: ["/d", "/c", resolved, ...args],
-  }
-}
 
 type Socket = {
   readyState: number
@@ -213,9 +199,8 @@ export const layer = Layer.effect(
       log.info("creating session", { id, cmd: command, args, cwd })
 
       const { spawn } = yield* Effect.promise(() => pty())
-      const run = spawnCommand(command, args, env)
       const proc = yield* Effect.sync(() =>
-        spawn(run.command, run.args, {
+        spawn(command, args, {
           name: "xterm-256color",
           cwd,
           env,

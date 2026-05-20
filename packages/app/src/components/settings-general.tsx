@@ -249,10 +249,6 @@ export const SettingsGeneral: Component = () => {
       label: language.label(locale),
     })),
   )
-  const followupOptions = createMemo(() => [
-    { value: "steer" as const, label: language.t("settings.general.row.followup.option.steer") },
-    { value: "queue" as const, label: language.t("settings.general.row.followup.option.queue") },
-  ])
 
   const noneSound = { id: "none", label: "sound.option.none" } as const
   const soundOptions = [noneSound, ...SOUND_OPTIONS]
@@ -320,6 +316,18 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
+          title={language.t("settings.general.row.betaFeatures.title")}
+          description={language.t("settings.general.row.betaFeatures.description")}
+        >
+          <div data-action="settings-beta-features">
+            <Switch
+              checked={settings.general.betaFeatures()}
+              onChange={(checked) => settings.general.setBetaFeatures(checked)}
+            />
+          </div>
+        </SettingsRow>
+
+        <SettingsRow
           title={language.t("settings.general.row.shell.title")}
           description={language.t("settings.general.row.shell.description")}
         >
@@ -339,36 +347,6 @@ export const SettingsGeneral: Component = () => {
             triggerVariant="settings"
             triggerStyle={{ "min-width": "180px" }}
           />
-        </SettingsRow>
-
-        <SettingsRow
-          title={language.t("settings.general.row.followup.title")}
-          description={language.t("settings.general.row.followup.description")}
-        >
-          <Select
-            data-action="settings-followup"
-            options={followupOptions()}
-            current={followupOptions().find((o) => o.value === settings.general.followup())}
-            value={(o) => o.value}
-            label={(o) => o.label}
-            onSelect={(option) => option && settings.general.setFollowup(option.value)}
-            variant="secondary"
-            size="small"
-            triggerVariant="settings"
-            triggerStyle={{ "min-width": "180px" }}
-          />
-        </SettingsRow>
-
-        <SettingsRow
-          title={language.t("settings.general.row.betaFeatures.title")}
-          description={language.t("settings.general.row.betaFeatures.description")}
-        >
-          <div data-action="settings-beta-features">
-            <Switch
-              checked={settings.general.betaFeatures()}
-              onChange={(checked) => settings.general.setBetaFeatures(checked)}
-            />
-          </div>
         </SettingsRow>
 
         <SettingsRow
