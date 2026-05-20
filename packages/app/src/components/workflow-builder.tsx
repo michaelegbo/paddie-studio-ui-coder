@@ -269,6 +269,7 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
   const [wide, setWide] = createSignal(false)
   const [ready, setReady] = createSignal(false)
   const [rev, setRev] = createSignal(0)
+  const [frameUrl, setFrameUrl] = createSignal<string>()
   const [selectedFlowId, setSelectedFlowId] = createSignal("")
   const [attaching, setAttaching] = createSignal(false)
   const [zoom, setZoom] = createSignal(70)
@@ -336,7 +337,7 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
   const zin = () => apply(zoom() + 10)
   const reset = () => apply(70)
   const loaded = () => {
-    setReady(true)
+    if (!platform.fetch) setReady(true)
     setFlowRev((value) => value + 1)
     void flowsApi.refetch()
     pulse()
@@ -381,10 +382,36 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
     }
   })
 
+  createEffect(() => {
+    const html = doc()
+    const version = rev()
+    if (!platform.fetch || !html) {
+      setFrameUrl()
+      return
+    }
+
+    // Chromium gives srcdoc iframes an opaque origin, which blocks the RMN auth
+    // provider from reading localStorage and leaves Studio stuck on its loader.
+    const url = URL.createObjectURL(
+      new Blob([`${html}\n<!-- paddie:${version} -->`], {
+        type: "text/html",
+      }),
+    )
+    setFrameUrl(url)
+    onCleanup(() => URL.revokeObjectURL(url))
+  })
+
   onMount(() => {
     const listen = (event: MessageEvent) => {
       if (frame && event.source !== frame.contentWindow) return
       const data = event.data as { source?: string; type?: string; message?: string }
+      if (data.type === "paddie-studio:fullscreen-route-ready") {
+        setReady(true)
+        setFlowRev((value) => value + 1)
+        void flowsApi.refetch()
+        pulse()
+        return
+      }
       if (data.source !== "paddie-workflow") return
       if (data.type !== "error") return
       setFail(data.message || "Workflow Builder failed to render")
@@ -524,7 +551,7 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
         }
       >
         <Show
-          when={!platform.fetch || doc()}
+          when={!platform.fetch || frameUrl()}
           fallback={
             <div class="min-h-0 flex-1 flex items-center justify-center text-13-medium text-text-weak">
               Loading Workflow Builder...
@@ -535,8 +562,7 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
             <iframe
               ref={frame}
               onLoad={loaded}
-              src={platform.fetch ? undefined : WORKFLOW_BUILDER_URL}
-              srcdoc={platform.fetch ? `${doc()}\n<!-- paddie:${rev()} -->` : undefined}
+              src={platform.fetch ? frameUrl() : WORKFLOW_BUILDER_URL}
               class="absolute left-0 top-0 block border-0 bg-[#09090b]"
               style={{
                 width: size(),
