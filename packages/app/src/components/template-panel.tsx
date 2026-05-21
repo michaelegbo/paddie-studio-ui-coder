@@ -10,6 +10,7 @@ import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
 import { useServer } from "@/context/server"
 import { useAuth } from "@/context/auth"
+import { useSettings } from "@/context/settings"
 import { paddieApi, UpgradeRequiredError } from "@/lib/paddie-api"
 import { STUDIO_LOGIN_URL, STUDIO_SIGNUP_URL } from "@/lib/paddie-links"
 import { InspirationPanel } from "@/components/inspiration-panel"
@@ -102,6 +103,7 @@ export function TemplatePanel(props: {
   const prompt = usePrompt()
   const server = useServer()
   const auth = useAuth()
+  const settings = useSettings()
 
   const [list, setList] = createSignal<UITemplateMeta[]>([])
   const [listLoading, setListLoading] = createSignal(false)
@@ -115,6 +117,7 @@ export function TemplatePanel(props: {
   const [pick, setPick] = createSignal(false)
   const [view, setView] = createSignal<"library" | "detail">("library")
   const [section, setSection] = createSignal<StudioSection>("templates")
+  const inspirationAvailable = createMemo(() => settings.general.betaFeatures() && settings.general.inspiration())
   const [parts, setParts] = createSignal(false)
   const [device, setDevice] = createSignal<Device>("desktop")
   const [desk, setDesk] = createSignal<Desk>("1920")
@@ -155,6 +158,12 @@ export function TemplatePanel(props: {
   const userTier = createMemo(() => auth.subscription()?.plan_slug ?? "free")
   const tierOrder: Record<string, number> = { free: 0, basic: 1, pro: 2, custom: 3 }
   const canAccess = (tier: string) => (tierOrder[userTier()] ?? 0) >= (tierOrder[tier] ?? 0)
+
+  createEffect(() => {
+    if (section() !== "inspiration") return
+    if (inspirationAvailable()) return
+    setSection("templates")
+  })
 
   let fetchInFlight = false
   const fetchList = async (opts?: { force?: boolean }): Promise<boolean> => {
@@ -613,13 +622,15 @@ export function TemplatePanel(props: {
                       </div>
                       <div class="min-w-0">
                         <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Studio</div>
-                        <div class="text-15-medium text-text-base">Templates, inspiration & workflows</div>
+                        <div class="text-15-medium text-text-base">
+                          {inspirationAvailable() ? "Templates, inspiration & workflows" : "Templates & workflows"}
+                        </div>
                       </div>
                     </div>
                     <div class="flex flex-wrap items-center justify-end gap-2 shrink-0">
                       <div class="rounded-xl border border-border-weaker-base bg-background-base p-1 flex items-center gap-1">
                         {tab("templates", "Templates")}
-                        {tab("inspiration", "Inspiration")}
+                        <Show when={inspirationAvailable()}>{tab("inspiration", "Inspiration")}</Show>
                         {tab("workflow", "Workflow Builder")}
                       </div>
                       <Show when={auth.isAuthenticated()}>
@@ -667,7 +678,7 @@ export function TemplatePanel(props: {
                   </div>
                 </div>
 
-                <Show when={section() === "inspiration"}>
+                <Show when={section() === "inspiration" && inspirationAvailable()}>
                   <InspirationPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
                 </Show>
 

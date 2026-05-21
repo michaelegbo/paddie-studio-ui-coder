@@ -7,7 +7,7 @@ export default function Workbench() {
   const params = useParams()
   const settings = useSettings()
   return (
-    <Show when={settings.general.betaFeatures()} fallback={<Navigate href={`/${params.dir}/session`} />}>
+    <Show when={settings.general.paddieStudioFeatures()} fallback={<Navigate href={`/${params.dir}/session`} />}>
       <WorkbenchPanel />
     </Show>
   )

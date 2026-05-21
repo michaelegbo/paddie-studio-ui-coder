@@ -44,7 +44,7 @@ export default function Home() {
     const dir = base64Encode(directory)
     layout.projects.open(directory)
     server.projects.touch(directory)
-    if (!opts?.studio || !settings.general.betaFeatures()) {
+    if (!opts?.studio || !settings.general.paddieStudioFeatures()) {
       navigate(`/${dir}`)
       return
     }
@@ -166,7 +166,7 @@ export default function Home() {
               <Button icon="folder-add-left" size="normal" class="pl-2 pr-3" onClick={chooseProject}>
                 {language.t("command.project.open")}
               </Button>
-              <Show when={platform.workbench && server.isLocal() && settings.general.betaFeatures()}>
+              <Show when={platform.workbench && server.isLocal() && settings.general.paddieStudioFeatures()}>
                 <Button icon="layout-right-full" size="normal" class="pl-2 pr-3" onClick={createFromTemplate}>
                   Create from template
                 </Button>
@@ -197,7 +197,7 @@ export default function Home() {
             <Button class="px-3" onClick={chooseProject}>
               {language.t("command.project.open")}
             </Button>
-            <Show when={platform.workbench && server.isLocal() && settings.general.betaFeatures()}>
+            <Show when={platform.workbench && server.isLocal() && settings.general.paddieStudioFeatures()}>
               <Button class="px-3" variant="ghost" onClick={createFromTemplate}>
                 Create from template
               </Button>
@@ -214,7 +214,7 @@ export default function Home() {
             <Button class="px-3 mt-1" onClick={chooseProject}>
               {language.t("command.project.open")}
             </Button>
-            <Show when={platform.workbench && server.isLocal() && settings.general.betaFeatures()}>
+            <Show when={platform.workbench && server.isLocal() && settings.general.paddieStudioFeatures()}>
               <Button class="px-3" variant="ghost" onClick={createFromTemplate}>
                 Create from template
               </Button>

@@ -23,7 +23,9 @@ export interface Settings {
     autoSave: boolean
     releaseNotes: boolean
     followup: "queue" | "steer"
-    uiFeaturesUngated: boolean
+    paddieStudioFeatures: boolean
+    betaFeatures: boolean
+    inspiration: boolean
     showFileTree: boolean
     showNavigation: boolean
     showSearch: boolean
@@ -64,7 +66,6 @@ const terminalFallback =
 const monoBase = monoFallback
 const sansBase = sansFallback
 const terminalBase = terminalFallback
-const defaultUiFeaturesUngated = import.meta.env.VITE_OPENCODE_CHANNEL !== "prod"
 
 function input(font: string | undefined) {
   return font ?? ""
@@ -110,7 +111,9 @@ const defaultSettings: Settings = {
     autoSave: true,
     releaseNotes: true,
     followup: "steer",
-    uiFeaturesUngated: defaultUiFeaturesUngated,
+    paddieStudioFeatures: true,
+    betaFeatures: false,
+    inspiration: true,
     showFileTree: true,
     showNavigation: true,
     showSearch: true,
@@ -164,13 +167,29 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
 
           const general = (value as Record<string, unknown>).general
           if (typeof general !== "object" || general === null || Array.isArray(general)) return value
-          if (typeof (general as Record<string, unknown>).uiFeaturesUngated === "boolean") return value
+          const current = general as Record<string, unknown>
+          if (
+            typeof current.paddieStudioFeatures === "boolean" &&
+            typeof current.betaFeatures === "boolean" &&
+            typeof current.inspiration === "boolean"
+          ) {
+            return value
+          }
 
           return {
             ...value,
             general: {
               ...general,
-              uiFeaturesUngated: defaultSettings.general.uiFeaturesUngated,
+              paddieStudioFeatures:
+                typeof current.paddieStudioFeatures === "boolean"
+                  ? current.paddieStudioFeatures
+                  : typeof current.uiFeaturesUngated === "boolean"
+                    ? current.uiFeaturesUngated
+                    : defaultSettings.general.paddieStudioFeatures,
+              betaFeatures:
+                typeof current.betaFeatures === "boolean" ? current.betaFeatures : defaultSettings.general.betaFeatures,
+              inspiration:
+                typeof current.inspiration === "boolean" ? current.inspiration : defaultSettings.general.inspiration,
             },
           }
         },
@@ -211,9 +230,20 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         setFollowup(value: "queue" | "steer") {
           setStore("general", "followup", value === "queue" ? "steer" : value)
         },
-        betaFeatures: withFallback(() => store.general?.uiFeaturesUngated, defaultSettings.general.uiFeaturesUngated),
+        paddieStudioFeatures: withFallback(
+          () => store.general?.paddieStudioFeatures,
+          defaultSettings.general.paddieStudioFeatures,
+        ),
+        setPaddieStudioFeatures(value: boolean) {
+          setStore("general", "paddieStudioFeatures", value)
+        },
+        betaFeatures: withFallback(() => store.general?.betaFeatures, defaultSettings.general.betaFeatures),
         setBetaFeatures(value: boolean) {
-          setStore("general", "uiFeaturesUngated", value)
+          setStore("general", "betaFeatures", value)
+        },
+        inspiration: withFallback(() => store.general?.inspiration, defaultSettings.general.inspiration),
+        setInspiration(value: boolean) {
+          setStore("general", "inspiration", value)
         },
         showFileTree: withFallback(() => store.general?.showFileTree, defaultSettings.general.showFileTree),
         setShowFileTree(value: boolean) {
