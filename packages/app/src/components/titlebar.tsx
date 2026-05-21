@@ -81,7 +81,7 @@ export function Titlebar() {
     return location.pathname.replace(/\/+$/, "").split("/").includes("session")
   })
   const workbench = createMemo(() => {
-    if (!settings.general.betaFeatures()) return false
+    if (!settings.general.paddieStudioFeatures()) return false
     if (!params.dir) return false
     const parts = location.pathname.replace(/\/+$/, "").split("/")
     return parts.at(-1) === "workbench"
@@ -89,13 +89,13 @@ export function Titlebar() {
   const studioKey = createMemo(() => (params.dir ? `${params.dir}${params.id ? "/" + params.id : ""}` : ""))
   const studioView = layout.view(studioKey)
   const studio = createMemo(() => {
-    if (!settings.general.betaFeatures()) return false
+    if (!settings.general.paddieStudioFeatures()) return false
     if (!params.dir) return false
     return studioView.studio.opened()
   })
 
   const openStudio = () => {
-    if (!settings.general.betaFeatures()) return
+    if (!settings.general.paddieStudioFeatures()) return
     if (!params.dir) return
 
     const target = params.id ? `/${params.dir}/session/${params.id}` : `/${params.dir}/session`
@@ -371,7 +371,7 @@ export function Titlebar() {
           data-tauri-drag-region
           onMouseDown={drag}
         >
-          <Show when={params.dir && settings.general.betaFeatures()}>
+          <Show when={params.dir && settings.general.paddieStudioFeatures()}>
             <Tooltip placement="bottom" value="Studio" openDelay={2000}>
               <Button
                 variant="ghost"

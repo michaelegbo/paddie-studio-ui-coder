@@ -152,7 +152,7 @@ const ProjectTile = (props: {
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content>
-          <Show when={settings.general.betaFeatures()}>
+          <Show when={settings.general.paddieStudioFeatures()}>
             <ContextMenu.Item
               onSelect={() => {
                 const dir = base64Encode(props.project.worktree)

@@ -316,6 +316,18 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
+          title={language.t("settings.general.row.paddieStudioFeatures.title")}
+          description={language.t("settings.general.row.paddieStudioFeatures.description")}
+        >
+          <div data-action="settings-paddie-studio-features">
+            <Switch
+              checked={settings.general.paddieStudioFeatures()}
+              onChange={(checked) => settings.general.setPaddieStudioFeatures(checked)}
+            />
+          </div>
+        </SettingsRow>
+
+        <SettingsRow
           title={language.t("settings.general.row.betaFeatures.title")}
           description={language.t("settings.general.row.betaFeatures.description")}
         >
@@ -323,6 +335,19 @@ export const SettingsGeneral: Component = () => {
             <Switch
               checked={settings.general.betaFeatures()}
               onChange={(checked) => settings.general.setBetaFeatures(checked)}
+            />
+          </div>
+        </SettingsRow>
+
+        <SettingsRow
+          title={language.t("settings.general.row.inspiration.title")}
+          description={language.t("settings.general.row.inspiration.description")}
+        >
+          <div data-action="settings-inspiration">
+            <Switch
+              checked={settings.general.betaFeatures() && settings.general.inspiration()}
+              disabled={!settings.general.betaFeatures()}
+              onChange={(checked) => settings.general.setInspiration(checked)}
             />
           </div>
         </SettingsRow>

@@ -263,7 +263,7 @@ export default function Page() {
 
   const isDesktop = createMediaQuery("(min-width: 768px)")
   const size = createSizing()
-  const desktopStudioOpen = createMemo(() => isDesktop() && settings.general.betaFeatures() && view().studio.opened())
+  const desktopStudioOpen = createMemo(() => isDesktop() && settings.general.paddieStudioFeatures() && view().studio.opened())
   const studioChatHidden = createMemo(() => desktopStudioOpen() && view().studio.chatHidden())
   const desktopReviewOpen = createMemo(() => isDesktop() && view().reviewPanel.opened())
   const desktopFileTreeOpen = createMemo(() => isDesktop() && layout.fileTree.opened())
