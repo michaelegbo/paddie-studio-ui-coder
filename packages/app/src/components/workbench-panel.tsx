@@ -297,9 +297,7 @@ export function WorkbenchPanel(props: {
 
   const tab = createMemo(() => state.tabs.find((item) => item.path === state.active))
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
-  const detected = createMemo(
-    () => previewFromSession(messages(), sync.data.part) ?? terminal.url() ?? previewFromTerminals(terminal.all()) ?? "",
-  )
+  const detected = createMemo(() => previewFromSession(messages(), sync.data.part) ?? previewFromTerminals(terminal.all()) ?? "")
   const previewUrl = createMemo(() => detected() || state.staticUrl)
   const previewLabel = createMemo(() => detected() || state.staticLabel)
   const previewSource = createMemo(() => (detected() ? "live" : state.staticUrl ? "static" : "none"))

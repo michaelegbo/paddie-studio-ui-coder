@@ -26,7 +26,6 @@ export interface TerminalProps extends ComponentProps<"div"> {
   onCleanup?: (pty: Partial<LocalPTY> & { id: string }) => void
   onConnect?: () => void
   onConnectError?: (error: unknown) => void
-  onOutput?: (data: string) => void
 }
 
 let shared: Promise<{ mod: typeof import("ghostty-web"); ghostty: Ghostty }> | undefined
@@ -170,17 +169,7 @@ export const Terminal = (props: TerminalProps) => {
   const password = auth?.password ?? ""
   const sameOrigin = new URL(url, location.href).origin === location.origin
   let container!: HTMLDivElement
-  const [local, others] = splitProps(props, [
-    "pty",
-    "class",
-    "classList",
-    "autoFocus",
-    "onSubmit",
-    "onCleanup",
-    "onConnect",
-    "onConnectError",
-    "onOutput",
-  ])
+  const [local, others] = splitProps(props, ["pty", "class", "classList", "autoFocus", "onConnect", "onConnectError"])
   const id = local.pty.id
   const restore = typeof local.pty.buffer === "string" ? local.pty.buffer : ""
   const restoreSize =
@@ -451,7 +440,6 @@ export const Terminal = (props: TerminalProps) => {
             resolve()
             return
           }
-          props.onOutput?.(data)
           output.push(data)
           output.flush(resolve)
         })
@@ -586,7 +574,6 @@ export const Terminal = (props: TerminalProps) => {
 
           const data = typeof event.data === "string" ? event.data : ""
           if (!data) return
-          props.onOutput?.(data)
           output?.push(data)
           cursor += data.length
           seek = cursor

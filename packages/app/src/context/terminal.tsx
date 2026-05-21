@@ -1,13 +1,12 @@
 import { createStore, produce } from "solid-js/store"
 import { createSimpleContext } from "@opencode-ai/ui/context"
-import { batch, createEffect, createMemo, createRoot, createSignal, on, onCleanup } from "solid-js"
+import { batch, createEffect, createMemo, createRoot, on, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useSDK } from "./sdk"
 import type { Platform } from "./platform"
 import { ServerConnection, useServer } from "./server"
 import { defaultTitle, titleNumber } from "./terminal-title"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
-import { previewUrl } from "@/utils/preview-url"
 
 export type LocalPTY = {
   id: string
@@ -161,7 +160,6 @@ function createWorkspaceTerminalSession(
   scope?: string,
 ) {
   const legacy = scope ? [] : getLegacyTerminalStorageKeys(dir, legacySessionID)
-  const [url, setUrl] = createSignal("")
 
   const [store, setStore, _, ready] = persisted(
     {
@@ -273,17 +271,11 @@ function createWorkspaceTerminalSession(
     ready,
     all: createMemo(() => store.all),
     active: createMemo(() => store.active),
-    url,
     clear() {
       batch(() => {
         setStore("active", undefined)
         setStore("all", [])
       })
-      setUrl("")
-    },
-    note(text: string) {
-      const next = previewUrl(text)
-      if (next) setUrl(next)
     },
     new() {
       const nextNumber = pickNextTerminalNumber()
@@ -461,8 +453,6 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
       ready: () => workspace().ready(),
       all: () => workspace().all(),
       active: () => workspace().active(),
-      url: () => workspace().url(),
-      note: (text: string) => workspace().note(text),
       new: () => workspace().new(),
       update: (pty: Partial<LocalPTY> & { id: string }) => workspace().update(pty),
       trim: (id: string) => workspace().trim(id),
