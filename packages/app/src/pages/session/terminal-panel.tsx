@@ -299,7 +299,6 @@ export function TerminalPanel() {
                               onConnect={() => markTerminalConnected(terminalRecoveryKey(pty()), id, ops.trim)}
                               onCleanup={ops.update}
                               onConnectError={() => recoverTerminal(terminalRecoveryKey(pty()), id, ops.clone)}
-                              onOutput={terminal.note}
                             />
                           </div>
                         )}
