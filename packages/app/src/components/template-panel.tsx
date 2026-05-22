@@ -13,6 +13,7 @@ import { useAuth } from "@/context/auth"
 import { useSettings } from "@/context/settings"
 import { paddieApi, UpgradeRequiredError } from "@/lib/paddie-api"
 import { STUDIO_LOGIN_URL, STUDIO_SIGNUP_URL } from "@/lib/paddie-links"
+import { AutopilotPanel } from "@/components/autopilot-panel"
 import { InspirationPanel } from "@/components/inspiration-panel"
 import { WorkflowBuilder, type WorkflowAttachPayload } from "@/components/workflow-builder"
 import {
@@ -74,7 +75,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 type Device = "desktop" | "tablet" | "mobile"
 type Desk = "1920" | "1600" | "1440"
-type StudioSection = "templates" | "inspiration" | "workflow"
+type StudioSection = "templates" | "inspiration" | "autopilot" | "workflow"
 
 const views = {
   "1920": { w: 1920, h: 1080, label: "1920x1080" },
@@ -118,6 +119,7 @@ export function TemplatePanel(props: {
   const [view, setView] = createSignal<"library" | "detail">("library")
   const [section, setSection] = createSignal<StudioSection>("templates")
   const inspirationAvailable = createMemo(() => settings.general.betaFeatures() && settings.general.inspiration())
+  const autopilotAvailable = createMemo(() => settings.general.autopilot())
   const [parts, setParts] = createSignal(false)
   const [device, setDevice] = createSignal<Device>("desktop")
   const [desk, setDesk] = createSignal<Desk>("1920")
@@ -162,6 +164,12 @@ export function TemplatePanel(props: {
   createEffect(() => {
     if (section() !== "inspiration") return
     if (inspirationAvailable()) return
+    setSection("templates")
+  })
+
+  createEffect(() => {
+    if (section() !== "autopilot") return
+    if (autopilotAvailable()) return
     setSection("templates")
   })
 
@@ -623,7 +631,13 @@ export function TemplatePanel(props: {
                       <div class="min-w-0">
                         <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Studio</div>
                         <div class="text-15-medium text-text-base">
-                          {inspirationAvailable() ? "Templates, inspiration & workflows" : "Templates & workflows"}
+                          {autopilotAvailable()
+                            ? inspirationAvailable()
+                              ? "Templates, inspiration, autopilot & workflows"
+                              : "Templates, autopilot & workflows"
+                            : inspirationAvailable()
+                              ? "Templates, inspiration & workflows"
+                              : "Templates & workflows"}
                         </div>
                       </div>
                     </div>
@@ -631,6 +645,7 @@ export function TemplatePanel(props: {
                       <div class="rounded-xl border border-border-weaker-base bg-background-base p-1 flex items-center gap-1">
                         {tab("templates", "Templates")}
                         <Show when={inspirationAvailable()}>{tab("inspiration", "Inspiration")}</Show>
+                        <Show when={autopilotAvailable()}>{tab("autopilot", "Autopilot")}</Show>
                         {tab("workflow", "Workflow Builder")}
                       </div>
                       <Show when={auth.isAuthenticated()}>
@@ -672,6 +687,8 @@ export function TemplatePanel(props: {
                   <div class="mt-3 max-w-[780px] text-13-medium text-text-weak">
                     {section() === "workflow"
                       ? "Build and manage Paddie workflows with the same account used for Studio templates."
+                      : section() === "autopilot"
+                        ? "Coordinate OpenClaw-style planning with the existing Paddie chat and code-builder loop."
                       : section() === "inspiration"
                         ? "Browse a public website, capture a selectable snapshot, and attach page or element references to chat."
                         : "Browse a starter first, then open it in a desktop canvas. Curated parts stay hidden until you select one or open them yourself."}
@@ -680,6 +697,10 @@ export function TemplatePanel(props: {
 
                 <Show when={section() === "inspiration" && inspirationAvailable()}>
                   <InspirationPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
+                </Show>
+
+                <Show when={section() === "autopilot" && autopilotAvailable()}>
+                  <AutopilotPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
                 </Show>
 
                 <Show when={section() === "workflow"}>

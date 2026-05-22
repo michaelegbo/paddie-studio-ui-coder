@@ -3,6 +3,8 @@
 - The default branch in this repo is `dev`.
 - Local `main` ref may not exist; use `dev` or `origin/dev` for diffs.
 - Prefer automation: execute requested actions without confirmation unless blocked by missing info or safety/irreversibility.
+- For Paddie-specific feature work, read `specs/paddie-upstream-safe-development.md` first. Paddie features should be additive, upstream-safe, and isolated from normal chat/code-builder behavior unless explicitly invoked.
+- Branch/release policy is documented in `specs/paddie-branch-release-policy.md`: follow upstream opencode by using `dev` as the default development branch and versioned tags/releases as stable outputs.
 
 ## Style Guide
 

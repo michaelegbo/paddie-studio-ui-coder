@@ -54,6 +54,12 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                   <span class="break-all text-text-invert-base/80">{item.url}</span>
                   <Show when={item.selector}>{(value) => <span class="break-all text-text-invert-base/70">{value()}</span>}</Show>
                 </div>
+              ) : item.type === "autopilot" ? (
+                <div class="flex max-w-[320px] flex-col gap-1">
+                  <span class="truncate text-text-invert-base">{item.goal}</span>
+                  <span class="break-all text-text-invert-base/80">{item.workspace}</span>
+                  <span class="text-text-invert-base/70">{item.status}</span>
+                </div>
               ) : (
                 <div class="flex max-w-[320px] flex-col gap-1">
                   <span class="truncate text-text-invert-base">{item.templateName}</span>
@@ -84,6 +90,8 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                       <Icon name="layout-right-full" class="shrink-0 size-3.5 text-icon-info-base" />
                     ) : item.type === "inspiration" ? (
                       <Icon name="window-cursor" class="shrink-0 size-3.5 text-icon-info-base" />
+                    ) : item.type === "autopilot" ? (
+                      <Icon name="brain" class="shrink-0 size-3.5 text-icon-info-base" />
                     ) : (
                       <Icon name="layout-right-full" class="shrink-0 size-3.5 text-icon-info-base" />
                     )}

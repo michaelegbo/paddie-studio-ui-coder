@@ -353,6 +353,18 @@ export const SettingsGeneral: Component = () => {
         </SettingsRow>
 
         <SettingsRow
+          title="Autopilot"
+          description="Show the isolated OpenClaw/Paddie Autopilot tab inside Studio."
+        >
+          <div data-action="settings-autopilot">
+            <Switch
+              checked={settings.general.autopilot()}
+              onChange={(checked) => settings.general.setAutopilot(checked)}
+            />
+          </div>
+        </SettingsRow>
+
+        <SettingsRow
           title={language.t("settings.general.row.shell.title")}
           description={language.t("settings.general.row.shell.description")}
         >
