@@ -326,7 +326,14 @@ export function WorkbenchPanel(props: {
     return Math.max(0, Math.min(state.right, rightMax()))
   })
   const edit = createMemo(() => Math.max(0, box() - left() - right()))
-  const previewW = createMemo(() => Math.max(0, (state.previewW || right()) - 32))
+  const previewInlineInset = createMemo(() => (state.mode === "preview" ? 50 : 26))
+  const previewStageW = createMemo(() => {
+    const measured = state.previewW
+    const derived = Math.max(0, right() - previewInlineInset())
+    if (size.active()) return derived
+    return measured || derived
+  })
+  const previewW = createMemo(() => Math.max(0, previewStageW() - 32))
   const previewH = createMemo(() => Math.max(0, state.previewH - 32))
   const chrome = 40
   const preset = createMemo(() => {
@@ -630,6 +637,14 @@ export function WorkbenchPanel(props: {
     setState("previewH", nextH)
   }
 
+  const resizePreview = (next: number) => {
+    size.touch()
+    setState("right", next)
+    setState("previewW", Math.max(0, next - previewInlineInset()))
+    queueMicrotask(fitPreview)
+    requestAnimationFrame(fitPreview)
+  }
+
   const fitBody = () => {
     if (!body) return
     const style = getComputedStyle(body)
@@ -655,6 +670,8 @@ export function WorkbenchPanel(props: {
     state.surface
     state.device
     state.desk
+    right()
+    compact()
     props.chatHidden
     queueMicrotask(fitBody)
     queueMicrotask(fitPreview)
@@ -690,6 +707,8 @@ export function WorkbenchPanel(props: {
     const max = rightMax()
     if (state.right <= max) return
     setState("right", Math.round(max))
+    queueMicrotask(fitPreview)
+    requestAnimationFrame(fitPreview)
   })
 
   command.register("workbench.preview", () => {
@@ -1128,10 +1147,7 @@ export function WorkbenchPanel(props: {
                 size={state.right}
                 min={rightFloor()}
                 max={rightMax()}
-                onResize={(next) => {
-                  size.touch()
-                  setState("right", next)
-                }}
+                onResize={resizePreview}
               />
             </div>
           </Show>
