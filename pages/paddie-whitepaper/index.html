@@ -1,0 +1,885 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="A Paddie Studio whitepaper covering the stable desktop foundation, beta release, and Paddie Native Autopilot direction."
+    />
+    <meta property="og:title" content="Paddie Studio Whitepaper" />
+    <meta
+      property="og:description"
+      content="From stable opencode desktop to Paddie Native Autopilot beta."
+    />
+    <meta property="og:type" content="website" />
+    <title>Paddie Studio Whitepaper</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,400&family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0c0a09;
+        --surface: #161311;
+        --surface-strong: #1d1814;
+        --line: #2a2520;
+        --ink: #f5f1ea;
+        --ink-dim: #b5aa9a;
+        --ink-mute: #776c60;
+        --accent: #ff7a3a;
+        --accent-soft: #ffb892;
+        --accent-deep: #9f3915;
+        --teal: #66d0bd;
+        --green: #6dd47e;
+        --red: #ff5547;
+        --display: "Fraunces", "Times New Roman", serif;
+        --body: "Inter Tight", system-ui, sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        color: var(--ink);
+        background:
+          linear-gradient(180deg, rgba(255, 122, 58, 0.09), transparent 320px),
+          repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 120px),
+          var(--bg);
+        font-family: var(--body);
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      body::before {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        content: "";
+        opacity: 0.35;
+        mix-blend-mode: screen;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 0.91  0 0 0 0 0.78  0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .page {
+        width: min(100%, 1440px);
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .shell {
+        border: 1px solid var(--line);
+        background: rgba(12, 10, 9, 0.78);
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        min-height: 72px;
+        padding: 16px 24px;
+        border-bottom: 1px solid var(--line);
+        backdrop-filter: blur(18px);
+        background: rgba(12, 10, 9, 0.88);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .mark {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        flex: 0 0 auto;
+        border: 1px solid var(--accent);
+        color: var(--accent-soft);
+        font-family: var(--display);
+        font-size: 18px;
+        background: #14100d;
+      }
+
+      .brand-text {
+        min-width: 0;
+      }
+
+      .brand-title,
+      .eyebrow,
+      .meta-label,
+      .tag,
+      .section-number,
+      .metric-label,
+      .button {
+        font-family: var(--mono);
+        letter-spacing: 0;
+      }
+
+      .brand-title {
+        color: var(--ink);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .brand-subtitle {
+        overflow: hidden;
+        color: var(--ink-mute);
+        font-size: 13px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .nav a,
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        color: var(--ink-dim);
+        font-size: 12px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .nav a:hover,
+      .button:hover {
+        border-color: rgba(255, 122, 58, 0.55);
+        color: var(--ink);
+      }
+
+      .button-primary {
+        border-color: var(--accent);
+        color: #1a0f09;
+        background: var(--accent);
+        font-weight: 600;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.02fr) minmax(320px, 0.98fr);
+        gap: 32px;
+        align-items: center;
+        min-height: calc(100vh - 132px);
+        padding: 56px 24px 40px;
+      }
+
+      .hero-copy {
+        padding: 24px;
+      }
+
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 0 22px;
+        color: var(--accent);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .loop {
+        position: relative;
+        display: inline-block;
+        width: 24px;
+        height: 11px;
+        border: 1.5px solid var(--accent);
+        border-radius: 999px;
+      }
+
+      .loop::before,
+      .loop::after {
+        position: absolute;
+        top: -1.5px;
+        width: 11px;
+        height: 11px;
+        border: 1.5px solid var(--accent);
+        border-radius: 999px;
+        background: var(--bg);
+        content: "";
+      }
+
+      .loop::before {
+        left: -6px;
+      }
+
+      .loop::after {
+        right: -6px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 10ch;
+        margin-bottom: 24px;
+        font-family: var(--display);
+        font-size: clamp(54px, 8vw, 116px);
+        font-weight: 300;
+        line-height: 0.96;
+      }
+
+      h1 em,
+      h2 em {
+        color: var(--accent);
+        font-style: italic;
+        font-weight: 400;
+      }
+
+      .lead {
+        max-width: 64ch;
+        margin-bottom: 30px;
+        color: var(--ink-dim);
+        font-size: clamp(18px, 2vw, 24px);
+        line-height: 1.45;
+      }
+
+      .cta-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .media-frame {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background: #090807;
+        box-shadow: 0 32px 90px rgba(0, 0, 0, 0.42);
+      }
+
+      .media-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 13px 16px;
+        border-bottom: 1px solid var(--line);
+        color: var(--ink-mute);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      .window-dots {
+        display: flex;
+        gap: 7px;
+      }
+
+      .window-dots span {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+      }
+
+      .window-dots span:nth-child(1) {
+        background: var(--red);
+      }
+
+      .window-dots span:nth-child(2) {
+        background: var(--accent-soft);
+      }
+
+      .window-dots span:nth-child(3) {
+        background: var(--green);
+      }
+
+      video {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #050403;
+        object-fit: cover;
+      }
+
+      .hero-meta {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        border-top: 1px solid var(--line);
+      }
+
+      .hero-meta > div {
+        min-width: 0;
+        padding: 18px;
+        border-right: 1px solid var(--line);
+      }
+
+      .hero-meta > div:last-child {
+        border-right: 0;
+      }
+
+      .meta-label {
+        margin-bottom: 6px;
+        color: var(--ink-mute);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+
+      .meta-value {
+        overflow-wrap: anywhere;
+        color: var(--ink);
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .section {
+        display: grid;
+        grid-template-columns: 210px minmax(0, 1fr);
+        gap: 28px;
+        padding: 72px 24px;
+        border-top: 1px solid var(--line);
+      }
+
+      .section-number {
+        position: sticky;
+        top: 104px;
+        align-self: start;
+        color: var(--accent);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .section-body {
+        min-width: 0;
+      }
+
+      h2 {
+        max-width: 15ch;
+        margin-bottom: 18px;
+        font-family: var(--display);
+        font-size: clamp(38px, 5vw, 74px);
+        font-weight: 400;
+        line-height: 1;
+      }
+
+      .section-intro {
+        max-width: 76ch;
+        margin-bottom: 28px;
+        color: var(--ink-dim);
+        font-size: 19px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      .grid-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .card,
+      .quote,
+      .timeline,
+      .diagram {
+        border: 1px solid var(--line);
+        background: rgba(22, 19, 17, 0.82);
+      }
+
+      .card {
+        padding: 22px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 26px;
+        margin-bottom: 18px;
+        padding: 0 10px;
+        border: 1px solid rgba(255, 122, 58, 0.48);
+        color: var(--accent-soft);
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+
+      h3 {
+        margin-bottom: 12px;
+        color: var(--ink);
+        font-size: 24px;
+        line-height: 1.15;
+      }
+
+      .card p,
+      .diagram p,
+      .quote p,
+      .timeline p {
+        margin-bottom: 0;
+        color: var(--ink-dim);
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background: var(--line);
+      }
+
+      .metric {
+        min-width: 0;
+        padding: 24px;
+        background: var(--surface);
+      }
+
+      .metric-value {
+        margin-bottom: 8px;
+        color: var(--ink);
+        font-family: var(--display);
+        font-size: clamp(34px, 5vw, 64px);
+        line-height: 1;
+      }
+
+      .metric-label {
+        color: var(--ink-mute);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .timeline {
+        padding: 8px 0;
+      }
+
+      .timeline-item {
+        display: grid;
+        grid-template-columns: 150px minmax(0, 1fr);
+        gap: 22px;
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .timeline-item:last-child {
+        border-bottom: 0;
+      }
+
+      .timeline-date {
+        color: var(--accent);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .timeline h3 {
+        margin-bottom: 6px;
+        font-size: 20px;
+      }
+
+      .diagram {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 1px;
+        overflow: hidden;
+        background: var(--line);
+      }
+
+      .diagram-step {
+        min-height: 150px;
+        padding: 18px;
+        background: linear-gradient(180deg, rgba(255, 122, 58, 0.07), transparent 70%), var(--surface);
+      }
+
+      .diagram-step strong {
+        display: block;
+        margin-bottom: 10px;
+        color: var(--ink);
+        font-size: 17px;
+      }
+
+      .diagram-step span {
+        color: var(--ink-dim);
+        font-size: 14px;
+      }
+
+      .quote {
+        padding: 34px;
+        border-color: rgba(255, 122, 58, 0.45);
+        background:
+          linear-gradient(90deg, rgba(255, 122, 58, 0.12), transparent),
+          var(--surface-strong);
+      }
+
+      .quote p {
+        color: var(--ink);
+        font-family: var(--display);
+        font-size: clamp(28px, 4vw, 54px);
+        line-height: 1.08;
+      }
+
+      .footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 32px 24px;
+        border-top: 1px solid var(--line);
+        color: var(--ink-mute);
+        font-size: 13px;
+      }
+
+      .footer a {
+        color: var(--ink-dim);
+      }
+
+      @media (max-width: 980px) {
+        .hero,
+        .section {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          min-height: auto;
+        }
+
+        .section-number {
+          position: static;
+        }
+
+        .grid-2,
+        .grid-3,
+        .metrics,
+        .diagram {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .page {
+          padding: 0;
+        }
+
+        .topbar {
+          position: static;
+          align-items: flex-start;
+          flex-direction: column;
+          padding: 18px;
+        }
+
+        .nav {
+          justify-content: flex-start;
+          width: 100%;
+        }
+
+        .nav a,
+        .button {
+          flex: 1 1 auto;
+        }
+
+        .hero,
+        .section {
+          padding: 42px 18px;
+        }
+
+        .hero-copy {
+          padding: 0;
+        }
+
+        .hero-meta {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-meta > div {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .hero-meta > div:last-child {
+          border-bottom: 0;
+        }
+
+        .timeline-item {
+          grid-template-columns: 1fr;
+          gap: 8px;
+          padding: 18px;
+        }
+
+        .footer {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <main class="shell">
+        <header class="topbar">
+          <a class="brand" href="#top" aria-label="Paddie Studio whitepaper home">
+            <span class="mark">dd</span>
+            <span class="brand-text">
+              <span class="brand-title">Paddie Studio</span>
+              <span class="brand-subtitle">Whitepaper / stable to beta</span>
+            </span>
+          </a>
+          <nav class="nav" aria-label="Whitepaper sections">
+            <a href="#thesis">Thesis</a>
+            <a href="#architecture">Architecture</a>
+            <a href="#beta">Beta</a>
+            <a href="https://github.com/michaelegbo/paddie-studio-ui-coder/releases/tag/v1.4.72-beta.1">Release</a>
+          </nav>
+        </header>
+
+        <section class="hero" id="top">
+          <div class="hero-copy">
+            <p class="eyebrow"><span class="loop" aria-hidden="true"></span> Paddie Whitepaper / 2026</p>
+            <h1>Paddie Studio from <em>stable</em> to beta.</h1>
+            <p class="lead">
+              Paddie Studio extends opencode into a visual, template-aware desktop studio. The beta track moves
+              that foundation toward native autonomous work: planning, building, testing, previewing, and reporting
+              inside scoped opencode sessions.
+            </p>
+            <div class="cta-row">
+              <a class="button button-primary" href="#whitepaper">Read the whitepaper</a>
+              <a class="button" href="https://github.com/michaelegbo/paddie-studio-ui-coder">View repository</a>
+            </div>
+          </div>
+
+          <div class="media-frame" aria-label="Paddie Studio video">
+            <div class="media-top">
+              <span class="window-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+              <span>main-paddie-ad.mp4</span>
+            </div>
+            <video controls muted playsinline preload="metadata">
+              <source src="./assets/main-paddie-ad.mp4" type="video/mp4" />
+              Your browser does not support the video tag.
+            </video>
+            <div class="hero-meta">
+              <div>
+                <div class="meta-label">Stable base</div>
+                <div class="meta-value">v1.4.71</div>
+              </div>
+              <div>
+                <div class="meta-label">Beta release</div>
+                <div class="meta-value">v1.4.72-beta.1</div>
+              </div>
+              <div>
+                <div class="meta-label">Runtime</div>
+                <div class="meta-value">opencode native</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="whitepaper">
+          <div class="section-number">01 / Executive summary</div>
+          <div class="section-body">
+            <h2>What changed from <em>stable</em> to beta.</h2>
+            <p class="section-intro">
+              The stable build proves the Paddie desktop shell, Studio surface, templates, workflow embedding, and
+              upstream opencode foundation. The beta builds on that base with Paddie Native Autopilot: an additive
+              orchestration layer that uses opencode sessions and tools instead of introducing a second AI runtime.
+            </p>
+            <div class="metrics">
+              <div class="metric">
+                <div class="metric-value">1</div>
+                <div class="metric-label">native runtime</div>
+              </div>
+              <div class="metric">
+                <div class="metric-value">4</div>
+                <div class="metric-label">studio surfaces</div>
+              </div>
+              <div class="metric">
+                <div class="metric-value">0</div>
+                <div class="metric-label">new credential stores</div>
+              </div>
+              <div class="metric">
+                <div class="metric-value">100%</div>
+                <div class="metric-label">scoped execution goal</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="thesis">
+          <div class="section-number">02 / Product thesis</div>
+          <div class="section-body">
+            <h2>The studio becomes the control room.</h2>
+            <p class="section-intro">
+              Paddie Studio is not a separate fork of the coding agent. It is a product layer around opencode that
+              gives users visual tools, reusable templates, workflow context, browser feedback, and autonomous run
+              state while keeping normal chat and code-builder behavior intact.
+            </p>
+            <div class="grid grid-3">
+              <article class="card">
+                <span class="tag">Templates</span>
+                <h3>Design references become build context.</h3>
+                <p>
+                  The Studio template system turns polished UI starters into visible, attachable implementation
+                  references that can be adapted across project stacks.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Workflow Builder</span>
+                <h3>Saved flows become code integrations.</h3>
+                <p>
+                  Workflow graphs and generated client code can be attached to coding tasks so the app can wire
+                  product logic without manually rebuilding the flow.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Inspiration</span>
+                <h3>Public websites become motion references.</h3>
+                <p>
+                  Public pages can be captured as sanitized design references, preserving visible layout, typography,
+                  color, and motion intent without copying private assets.
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="architecture">
+          <div class="section-number">03 / Native architecture</div>
+          <div class="section-body">
+            <h2>Autopilot uses opencode as the harness.</h2>
+            <p class="section-intro">
+              The beta direction removes OpenClaw from the execution path. Autopilot becomes a Paddie-owned controller
+              that starts scoped opencode worker sessions, uses the selected model and provider, and listens for
+              progress, tool, shell, status, and handoff events.
+            </p>
+            <div class="diagram" aria-label="Paddie Native Autopilot architecture">
+              <div class="diagram-step">
+                <strong>Studio</strong>
+                <span>User goal, selected workspace, templates, workflows, preview context.</span>
+              </div>
+              <div class="diagram-step">
+                <strong>Controller</strong>
+                <span>Plans the run, owns state, queues tasks, enforces approval boundaries.</span>
+              </div>
+              <div class="diagram-step">
+                <strong>opencode session</strong>
+                <span>Dedicated worker session using the current agent, model, provider, and variant.</span>
+              </div>
+              <div class="diagram-step">
+                <strong>Tools</strong>
+                <span>Files, commands, tests, preview detection, browser checks, and task markers.</span>
+              </div>
+              <div class="diagram-step">
+                <strong>Handoff</strong>
+                <span>Changed files, checks, preview status, artifacts, blockers, and residual risks.</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="beta">
+          <div class="section-number">04 / Beta release</div>
+          <div class="section-body">
+            <h2>The beta is about controlled autonomy.</h2>
+            <p class="section-intro">
+              Paddie Native Autopilot is designed to do real work while staying visible, stoppable, and isolated from
+              normal chat. The user sees a plan before execution, live activity after the run starts, and a final
+              handoff when the worker finishes.
+            </p>
+            <div class="timeline">
+              <div class="timeline-item">
+                <div class="timeline-date">Stable</div>
+                <div>
+                  <h3>Paddie Studio v1.4.71</h3>
+                  <p>Desktop release with the Studio foundation, template flows, workflow embedding, and release channel policy.</p>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <div class="timeline-date">Beta</div>
+                <div>
+                  <h3>Paddie Studio v1.4.72-beta.1</h3>
+                  <p>Native Autopilot moves into beta with scoped runs, task planning, live activity, and opencode worker handoff.</p>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <div class="timeline-date">Next</div>
+                <div>
+                  <h3>Hardening the loop</h3>
+                  <p>Priority work continues on previews, approvals, persisted artifacts, multi-codebase runs, and richer status reporting.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-number">05 / Safety model</div>
+          <div class="section-body">
+            <h2>Autonomy stays additive and upstream-safe.</h2>
+            <p class="section-intro">
+              Paddie-specific features should sit around opencode, not replace it. Normal chat, model/provider setup,
+              and code-builder behavior must work unchanged when Autopilot is disabled or unused.
+            </p>
+            <div class="grid grid-2">
+              <article class="card">
+                <span class="tag">Isolation</span>
+                <h3>Dedicated sessions for autonomous work.</h3>
+                <p>
+                  Autopilot creates scoped worker sessions instead of typing into the normal chat composer. Attaching a
+                  run to chat is optional discussion context, not the execution path.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Approvals</span>
+                <h3>Risky actions require explicit consent.</h3>
+                <p>
+                  Destructive file changes, git push or release, deploys, credential use, payments, publishing, and
+                  actions outside the workspace require approval before execution.
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-number">06 / Closing note</div>
+          <div class="section-body">
+            <div class="quote">
+              <p>
+                Paddie Studio turns coding assistance into a visible studio workflow: plan first, act in scoped
+                sessions, verify in public, and hand the result back clearly.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <footer class="footer">
+          <span>Paddie Studio whitepaper / stable to beta</span>
+          <span>
+            <a href="https://github.com/michaelegbo/paddie-studio-ui-coder">GitHub</a>
+            ·
+            <a href="https://paddie.io/waitlist">Waitlist</a>
+          </span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
