@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="A Paddie Studio whitepaper covering the product features, Studio surfaces, native Autopilot, and underlying technology architecture."
+      content="A Paddie Studio whitepaper covering templates, Workflow Builder, Paddie Memory, Knowledge Base/RAG, native Autopilot, and the underlying technology architecture."
     />
     <meta property="og:title" content="Paddie Studio Whitepaper" />
     <meta
@@ -735,7 +735,8 @@
             <h1>Paddie Studio, the <em>visual AI</em> development workspace.</h1>
             <p class="lead">
               Paddie Studio brings chat-based coding, visual templates, website inspiration, workflow generation,
-              project previews, and autonomous implementation into one desktop workspace built on opencode.
+              agentic memory/RAG, project previews, and autonomous implementation into one desktop workspace built on
+              opencode.
             </p>
             <div class="cta-row">
               <a class="button button-primary" href="#whitepaper">Read the whitepaper</a>
@@ -780,8 +781,9 @@
             <h2>What Paddie Studio is built to do.</h2>
             <p class="section-intro">
               Paddie Studio is a desktop product for building software with AI while keeping the work visible. It
-              combines the proven opencode agentic coding engine with Paddie-owned Studio tools for templates,
-              inspiration references, workflow builder context, previews, and native Autopilot orchestration.
+              combines the proven opencode agentic coding engine with Paddie-owned Studio tools for templates and
+              inspiration, plus Workflow Builder systems for Paddie Memory, Knowledge Base/RAG, generated clients,
+              previews, and native Autopilot orchestration.
             </p>
             <div class="metrics">
               <div class="metric">
@@ -797,8 +799,8 @@
                 <div class="metric-label">workflow to code</div>
               </div>
               <div class="metric">
-                <div class="metric-value">Memory</div>
-                <div class="metric-label">explicit agent context</div>
+                <div class="metric-value">RAG</div>
+                <div class="metric-label">agentic memory layer</div>
               </div>
             </div>
           </div>
@@ -842,8 +844,16 @@
                 <span class="tag">Workflow Builder</span>
                 <h3>Saved flows become code integrations.</h3>
                 <p>
-                  Saved flows, graph structure, and generated client code can be attached to coding tasks so the app
-                  can wire product logic without manually rebuilding the flow.
+                  Saved flows, graph structure, Memory/RAG nodes, orchestrators, and generated client code can be
+                  attached to coding tasks so the app can wire product logic without manually rebuilding the flow.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Paddie Memory</span>
+                <h3>Agents get durable context.</h3>
+                <p>
+                  Inside Workflow Builder, Paddie Memory adds agentic memory for preferences, conversation history,
+                  knowledge graph relationships, long-term context, and contextual retrieval across sessions.
                 </p>
               </article>
               <article class="card">
@@ -869,11 +879,11 @@
         <section class="section" id="studio-systems">
           <div class="section-number">03 / Paddie systems</div>
           <div class="section-body">
-            <h2>Templates, workflows, and memory become agentic context.</h2>
+            <h2>Templates build UI. Workflows build agents.</h2>
             <p class="section-intro">
-              Paddie Studio is more than a chat shell. Its Studio systems turn product assets into structured context
-              that the selected AI model can actually use: visual templates for interface direction, workflow graphs
-              for business logic, and explicit memory surfaces for project continuity.
+              Paddie has two complementary creation systems. Studio templates and inspiration help users build
+              beautiful UI. Workflow Builder helps users build AI agents and automations with Paddie Memory,
+              Knowledge Base/RAG, harnesses, skills, orchestrators, tools, and generated code clients.
             </p>
             <div class="grid grid-3">
               <article class="card">
@@ -906,29 +916,44 @@
               </article>
               <article class="card">
                 <span class="tag">Workflow Builder</span>
-                <h3>Flows carry product logic.</h3>
+                <h3>Flows carry agent and product logic.</h3>
                 <p>
-                  Workflows are not just diagrams. Paddie can list saved flows, attach the workflow graph, include the
-                  generated JavaScript client, and ask the coding agent to create the wrapper, hook, service, route, or
-                  action that calls the workflow from the current app.
+                  Workflows are not just diagrams. Paddie can combine AI model nodes, memory nodes, RAG retrieval,
+                  webhooks, conditions, loops, HTTP calls, skills, and AI orchestrators into runnable agent workflows.
                 </p>
               </article>
               <article class="card">
-                <span class="tag">Workflow semantics</span>
-                <h3>The graph remains the source of truth.</h3>
+                <span class="tag">Code export</span>
+                <h3>The graph can ship into real apps.</h3>
                 <p>
-                  The AI is instructed to preserve the workflow node order and data-flow semantics instead of manually
-                  rewriting the graph. That keeps the generated integration aligned with the saved Paddie workflow and
-                  makes future updates easier to reason about.
+                  A saved workflow can be exported or invoked as code, so teams can use the generated client directly
+                  inside their applications while the workflow graph remains the source of truth for future updates.
                 </p>
               </article>
               <article class="card">
                 <span class="tag">Agentic memory</span>
-                <h3>Memory is explicit and project-scoped.</h3>
+                <h3>Paddie Memory is a real agent memory layer.</h3>
                 <p>
-                  Paddie memory is built from visible context: the selected workspace, attached templates, inspiration
-                  snapshots, workflow references, Autopilot plans, run events, and final handoffs. The agent can carry
-                  that context through the task without silently changing unrelated chats or projects.
+                  Paddie Memory is closer to a Mem0-style agentic memory layer than a chat note. It stores and retrieves
+                  user preferences, conversation history, long-term context, knowledge graph relationships, working
+                  memory, summaries, and procedural knowledge for agents.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Knowledge Base/RAG</span>
+                <h3>Agents can ground work in retrieved knowledge.</h3>
+                <p>
+                  The AI Knowledge Base/RAG layer gives workflows semantic retrieval over knowledge sources. Agents can
+                  search, rank, and use relevant context while Workflow Builder controls when retrieval happens.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Studio context</span>
+                <h3>Project context still stays scoped.</h3>
+                <p>
+                  Separate from agentic Paddie Memory, Studio context packages the selected workspace, attached
+                  templates, inspiration snapshots, Autopilot plans, run events, and final handoffs without silently
+                  changing unrelated chats or projects.
                 </p>
               </article>
             </div>
@@ -959,7 +984,7 @@
               </div>
               <div class="diagram-step">
                 <strong>Paddie APIs</strong>
-                <span>Templates, workflow catalog, generated clients, account state, and Studio resources.</span>
+                <span>Templates, workflow catalog, Paddie Memory, Knowledge Base/RAG, generated clients, account state, and Studio resources.</span>
               </div>
               <div class="diagram-step">
                 <strong>Preview loop</strong>
@@ -1119,8 +1144,8 @@
             <div class="quote">
               <p>
                 Paddie Studio turns AI software creation into a visible studio workflow: bring in the right design,
-                attach the right workflow, run the right model, preview the result, and keep every autonomous step
-                traceable.
+                build the right agent workflow, connect memory and RAG, run the right model, preview the result, and
+                keep every autonomous step traceable.
               </p>
             </div>
           </div>
