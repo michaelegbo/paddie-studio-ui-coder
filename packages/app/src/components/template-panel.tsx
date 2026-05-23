@@ -1,6 +1,7 @@
 import { useNavigate } from "@solidjs/router"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { Button } from "@opencode-ai/ui/button"
+import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { Mark } from "@opencode-ai/ui/logo"
 import { showToast } from "@opencode-ai/ui/toast"
 import { base64Encode } from "@opencode-ai/core/util/encode"
@@ -16,6 +17,15 @@ import { STUDIO_LOGIN_URL, STUDIO_SIGNUP_URL } from "@/lib/paddie-links"
 import { AutopilotPanel } from "@/components/autopilot-panel"
 import { InspirationPanel } from "@/components/inspiration-panel"
 import { WorkflowBuilder, type WorkflowAttachPayload } from "@/components/workflow-builder"
+import { DialogConnectProvider } from "@/components/dialog-connect-provider"
+import { DialogSelectProvider } from "@/components/dialog-select-provider"
+import {
+  markStudioProviderOnboardingSeen,
+  shouldShowStudioProviderOnboarding,
+  StudioProviderOnboarding,
+  studioProviderOnboardingSeen,
+} from "@/components/studio-provider-onboarding"
+import { useProviders } from "@/hooks/use-providers"
 import {
   DEFAULT_TEMPLATE_THUMB_DATA_URL,
   filesFor,
@@ -106,6 +116,8 @@ export function TemplatePanel(props: {
   const server = useServer()
   const auth = useAuth()
   const settings = useSettings()
+  const dialog = useDialog()
+  const providers = useProviders()
 
   const [list, setList] = createSignal<UITemplateMeta[]>([])
   const [listLoading, setListLoading] = createSignal(false)
@@ -132,6 +144,7 @@ export function TemplatePanel(props: {
   const [docCache, setDocCache] = createSignal<Record<string, string>>({})
   const [wait, setWait] = createSignal(false)
   const [showUpgrade, setShowUpgrade] = createSignal(false)
+  const [showProviderOnboarding, setShowProviderOnboarding] = createSignal(false)
   const [upgradeInfo, setUpgradeInfo] = createSignal<{ required_tier: string; current_tier: string }>()
   let frame: HTMLIFrameElement | undefined
   let stage: HTMLDivElement | undefined
@@ -170,6 +183,46 @@ export function TemplatePanel(props: {
   const userTier = createMemo(() => auth.subscription()?.plan_slug ?? "free")
   const tierOrder: Record<string, number> = { free: 0, basic: 1, pro: 2, custom: 3 }
   const canAccess = (tier: string) => (tierOrder[userTier()] ?? 0) >= (tierOrder[tier] ?? 0)
+  const providerCatalogReady = createMemo(() => providers.all().length > 0)
+  const connectedModelProviderCount = createMemo(() => providers.paid().length)
+
+  const dismissProviderOnboarding = () => {
+    markStudioProviderOnboardingSeen()
+    setShowProviderOnboarding(false)
+  }
+
+  const openProviderSelection = () => {
+    dismissProviderOnboarding()
+    dialog.show(() => <DialogSelectProvider />)
+  }
+
+  const openOpenAIConnection = () => {
+    dismissProviderOnboarding()
+    if (providers.all().some((provider) => provider.id === "openai")) {
+      dialog.show(() => <DialogConnectProvider provider="openai" />)
+      return
+    }
+    dialog.show(() => <DialogSelectProvider />)
+  }
+
+  createEffect(() => {
+    if (
+      !shouldShowStudioProviderOnboarding({
+        providerCatalogReady: providerCatalogReady(),
+        connectedProviderCount: connectedModelProviderCount(),
+        seen: studioProviderOnboardingSeen(),
+      })
+    ) {
+      return
+    }
+    setShowProviderOnboarding(true)
+  })
+
+  createEffect(() => {
+    if (!showProviderOnboarding()) return
+    if (connectedModelProviderCount() === 0) return
+    setShowProviderOnboarding(false)
+  })
 
   createEffect(() => {
     if (section() !== "inspiration") return
@@ -650,6 +703,14 @@ export function TemplatePanel(props: {
               </div>
             </div>
           </div>
+        </Show>
+
+        <Show when={showProviderOnboarding()}>
+          <StudioProviderOnboarding
+            onChooseProvider={openProviderSelection}
+            onConnectOpenAI={openOpenAIConnection}
+            onDismiss={dismissProviderOnboarding}
+          />
         </Show>
 
         <Show
