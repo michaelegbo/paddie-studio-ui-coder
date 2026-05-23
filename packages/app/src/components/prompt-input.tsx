@@ -1065,6 +1065,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             continue
           }
 
+          if (item.type === "autopilot") {
+            prompt.context.add({
+              type: "autopilot",
+              runID: item.runID,
+              sessionID: item.sessionID,
+              runtime: item.runtime,
+              goal: item.goal,
+              tasks: item.tasks,
+              workspace: item.workspace,
+              status: item.status,
+              agent: item.agent,
+              model: item.model,
+              plan: item.plan,
+              events: item.events,
+              safeguards: item.safeguards,
+            })
+            continue
+          }
+
           prompt.context.add({
             type: item.type,
             path: item.path,

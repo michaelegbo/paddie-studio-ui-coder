@@ -13,6 +13,7 @@ import { useAuth } from "@/context/auth"
 import { useSettings } from "@/context/settings"
 import { paddieApi, UpgradeRequiredError } from "@/lib/paddie-api"
 import { STUDIO_LOGIN_URL, STUDIO_SIGNUP_URL } from "@/lib/paddie-links"
+import { AutopilotPanel } from "@/components/autopilot-panel"
 import { InspirationPanel } from "@/components/inspiration-panel"
 import { WorkflowBuilder, type WorkflowAttachPayload } from "@/components/workflow-builder"
 import {
@@ -74,7 +75,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 type Device = "desktop" | "tablet" | "mobile"
 type Desk = "1920" | "1600" | "1440"
-type StudioSection = "templates" | "inspiration" | "workflow"
+type StudioSection = "templates" | "inspiration" | "autopilot" | "workflow"
 
 const views = {
   "1920": { w: 1920, h: 1080, label: "1920x1080" },
@@ -89,6 +90,7 @@ const mini = {
   h: 940,
   scale: 0.18,
 } as const
+const GALLERY_PREVIEW_PREFETCH_LIMIT = 30
 
 const miniH = Math.round(mini.h * mini.scale)
 const miniW = Math.round(mini.w * mini.scale)
@@ -111,6 +113,7 @@ export function TemplatePanel(props: {
 
   const [detailCache, setDetailCache] = createSignal<Record<string, UITemplate>>({})
   const [detailLoading, setDetailLoading] = createSignal(false)
+  const [galleryPreviewLoading, setGalleryPreviewLoading] = createSignal<Record<string, boolean>>({})
 
   const [id, setID] = createSignal("")
   const [pid, setPID] = createSignal("full")
@@ -118,6 +121,7 @@ export function TemplatePanel(props: {
   const [view, setView] = createSignal<"library" | "detail">("library")
   const [section, setSection] = createSignal<StudioSection>("templates")
   const inspirationAvailable = createMemo(() => settings.general.betaFeatures() && settings.general.inspiration())
+  const autopilotAvailable = createMemo(() => settings.general.autopilot())
   const [parts, setParts] = createSignal(false)
   const [device, setDevice] = createSignal<Device>("desktop")
   const [desk, setDesk] = createSignal<Desk>("1920")
@@ -149,6 +153,14 @@ export function TemplatePanel(props: {
     if (!cur || !text.trim()) return ""
     return previewDoc(url(), text, cur.parts, "browse")
   })
+  const galleryPreview = (item: UITemplateMeta): { kind: "src" | "srcdoc"; value: string } | undefined => {
+    const cur = detailCache()[item.id]
+    if (!cur) return
+    const link = previewUrl(cur)
+    const text = previewHtml(cur)
+    if (text.trim() && templateGalleryPreviewReady(text)) return { kind: "srcdoc", value: previewDoc(link, text, cur.parts, "browse") }
+    if (link) return { kind: "src", value: link }
+  }
   const hit = createMemo(() => {
     const t = tpl()
     if (!t) return undefined
@@ -165,7 +177,37 @@ export function TemplatePanel(props: {
     setSection("templates")
   })
 
+  createEffect(() => {
+    if (section() !== "autopilot") return
+    if (autopilotAvailable()) return
+    setSection("templates")
+  })
+
   let fetchInFlight = false
+  let galleryPreviewPrefetchRun = 0
+  const fetchGalleryPreview = async (templateId: string) => {
+    if (detailCache()[templateId] || galleryPreviewLoading()[templateId]) return
+    setGalleryPreviewLoading((prev) => ({ ...prev, [templateId]: true }))
+    try {
+      const data = await paddieApi.get<UITemplate>(`/studio/ui-templates/${templateId}?v=${Date.now()}`)
+      setDetailCache((prev) => (prev[templateId] ? prev : { ...prev, [templateId]: data }))
+    } catch {
+      // Gallery previews are opportunistic. Opening the template still performs the full load/error flow.
+    } finally {
+      setGalleryPreviewLoading((prev) => {
+        const next = { ...prev }
+        delete next[templateId]
+        return next
+      })
+    }
+  }
+  const prefetchGalleryPreviews = async (items: UITemplateMeta[]) => {
+    const runID = ++galleryPreviewPrefetchRun
+    for (const item of items.filter((template) => canAccess(template.tier)).slice(0, GALLERY_PREVIEW_PREFETCH_LIMIT)) {
+      if (runID !== galleryPreviewPrefetchRun) return
+      await fetchGalleryPreview(item.id)
+    }
+  }
   const fetchList = async (opts?: { force?: boolean }): Promise<boolean> => {
     if (!auth.isAuthenticated()) return false
     if (fetchInFlight && !opts?.force) return false
@@ -177,6 +219,7 @@ export function TemplatePanel(props: {
       setList(data)
       setListError(undefined)
       if (data.length > 0 && !id()) setID(data[0].id)
+      void prefetchGalleryPreviews(data)
       return true
     } catch (err) {
       setListError(err instanceof Error ? err.message : "Failed to load templates")
@@ -623,7 +666,13 @@ export function TemplatePanel(props: {
                       <div class="min-w-0">
                         <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Studio</div>
                         <div class="text-15-medium text-text-base">
-                          {inspirationAvailable() ? "Templates, inspiration & workflows" : "Templates & workflows"}
+                          {autopilotAvailable()
+                            ? inspirationAvailable()
+                              ? "Templates, inspiration, autopilot & workflows"
+                              : "Templates, autopilot & workflows"
+                            : inspirationAvailable()
+                              ? "Templates, inspiration & workflows"
+                              : "Templates & workflows"}
                         </div>
                       </div>
                     </div>
@@ -631,6 +680,7 @@ export function TemplatePanel(props: {
                       <div class="rounded-xl border border-border-weaker-base bg-background-base p-1 flex items-center gap-1">
                         {tab("templates", "Templates")}
                         <Show when={inspirationAvailable()}>{tab("inspiration", "Inspiration")}</Show>
+                        <Show when={autopilotAvailable()}>{tab("autopilot", "Autopilot")}</Show>
                         {tab("workflow", "Workflow Builder")}
                       </div>
                       <Show when={auth.isAuthenticated()}>
@@ -672,6 +722,8 @@ export function TemplatePanel(props: {
                   <div class="mt-3 max-w-[780px] text-13-medium text-text-weak">
                     {section() === "workflow"
                       ? "Build and manage Paddie workflows with the same account used for Studio templates."
+                      : section() === "autopilot"
+                        ? "Plan, build, test, preview, and iterate through a scoped native opencode worker session."
                       : section() === "inspiration"
                         ? "Browse a public website, capture a selectable snapshot, and attach page or element references to chat."
                         : "Browse a starter first, then open it in a desktop canvas. Curated parts stay hidden until you select one or open them yourself."}
@@ -680,6 +732,10 @@ export function TemplatePanel(props: {
 
                 <Show when={section() === "inspiration" && inspirationAvailable()}>
                   <InspirationPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
+                </Show>
+
+                <Show when={section() === "autopilot" && autopilotAvailable()}>
+                  <AutopilotPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
                 </Show>
 
                 <Show when={section() === "workflow"}>
@@ -766,11 +822,35 @@ export function TemplatePanel(props: {
                                         {item.name}
                                       </div>
                                     </div>
-                                    <img
-                                      src={item.thumb_url?.trim() || DEFAULT_TEMPLATE_THUMB_DATA_URL}
-                                      class="block h-[calc(100%-40px)] w-full object-cover"
-                                      alt={`${item.name} preview`}
-                                    />
+                                    <Show
+                                      when={galleryPreview(item)}
+                                      fallback={
+                                        <div class="relative h-[calc(100%-40px)] w-full overflow-hidden">
+                                          <img
+                                            src={item.thumb_url?.trim() || DEFAULT_TEMPLATE_THUMB_DATA_URL}
+                                            class="block size-full object-cover"
+                                            alt={`${item.name} preview`}
+                                          />
+                                          <Show when={galleryPreviewLoading()[item.id]}>
+                                            <div class="absolute inset-0 flex items-center justify-center bg-[#111218]/45 text-11-medium text-text-weak backdrop-blur-[1px]">
+                                              Loading preview
+                                            </div>
+                                          </Show>
+                                        </div>
+                                      }
+                                    >
+                                      {(preview) => (
+                                        <iframe
+                                          src={preview().kind === "src" ? preview().value : undefined}
+                                          srcdoc={preview().kind === "srcdoc" ? preview().value : undefined}
+                                          sandbox="allow-scripts allow-same-origin"
+                                          loading="lazy"
+                                          tabIndex={-1}
+                                          class="pointer-events-none block h-[calc(100%-40px)] w-full border-0 bg-white"
+                                          title={`${item.name} gallery preview`}
+                                        />
+                                      )}
+                                    </Show>
                                   </div>
                                 </div>
                               </div>

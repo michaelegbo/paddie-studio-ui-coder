@@ -427,9 +427,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             parts: input.parts,
           })
         },
-        async sync(sessionID: string, opts?: { force?: boolean }) {
-          const directory = sdk.directory
-          const client = sdk.client
+        async sync(sessionID: string, opts?: { force?: boolean; directory?: string }) {
+          const directory = opts?.directory ?? sdk.directory
+          const client =
+            directory === sdk.directory
+              ? sdk.client
+              : sdk.createClient({
+                  directory,
+                  throwOnError: true,
+                })
           const [store, setStore] = globalSync.child(directory)
           const key = keyFor(directory, sessionID)
 

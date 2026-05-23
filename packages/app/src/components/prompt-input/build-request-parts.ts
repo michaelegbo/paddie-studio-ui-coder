@@ -4,6 +4,7 @@ import type { FileSelection } from "@/context/file"
 import { encodeFilePath } from "@/context/file/path"
 import type {
   AgentPart,
+  AutopilotContextItem,
   ElementContextItem,
   FileAttachmentPart,
   FileContextItem,
@@ -22,7 +23,14 @@ type BuildRequestPartsInput = {
   prompt: Prompt
   context: ({
     key: string
-  } & (FileContextItem | ElementContextItem | TemplateContextItem | WorkflowContextItem | InspirationContextItem))[]
+  } & (
+    | FileContextItem
+    | ElementContextItem
+    | TemplateContextItem
+    | WorkflowContextItem
+    | InspirationContextItem
+    | AutopilotContextItem
+  ))[]
   images: ImageAttachmentPart[]
   text: string
   messageID: string
@@ -63,6 +71,9 @@ const isWorkflowContext = (
 const isInspirationContext = (
   item: BuildRequestPartsInput["context"][number],
 ): item is { key: string } & InspirationContextItem => item.type === "inspiration"
+const isAutopilotContext = (
+  item: BuildRequestPartsInput["context"][number],
+): item is { key: string } & AutopilotContextItem => item.type === "autopilot"
 
 const TEMPLATE_REFERENCE_FILE_LIMIT = 48_000
 const TEMPLATE_REFERENCE_TOTAL_LIMIT = 140_000
@@ -230,6 +241,53 @@ const formatInspirationNote = (item: InspirationContextItem) => {
   return lines.join("\n\n")
 }
 
+const formatAutopilotNote = (item: AutopilotContextItem) => {
+  const lines = [
+    "The user attached the following Paddie Studio Autopilot run as optional discussion context.",
+    `Run ID: ${item.runID}`,
+    `Goal: ${item.goal}`,
+    `Workspace: ${item.workspace}`,
+    `Status: ${item.status}`,
+  ]
+  if (item.runtime) lines.push(`Runtime: ${item.runtime}`)
+  if (item.sessionID) lines.push(`Session ID: ${item.sessionID}`)
+  if (item.agent) lines.push(`Selected agent: ${item.agent}`)
+  if (item.model) {
+    const model = `${item.model.providerID}/${item.model.modelID}`
+    lines.push(`Selected model: ${item.model.variant ? `${model} (${item.model.variant})` : model}`)
+  }
+  const taskItems = item.taskItems?.length
+    ? item.taskItems
+    : item.tasks?.map((task, index) => ({ id: `task-${index + 1}`, title: task, status: "pending" }))
+  if (taskItems?.length) {
+    lines.push("Task queue:")
+    lines.push(...taskItems.map((task, index) => `${index + 1}. [${task.status}] ${task.title}`))
+  }
+  lines.push(
+    "This is optional discussion context for a Paddie Native Autopilot run. The run executes in its own scoped opencode worker session; this normal chat should only discuss or continue from the attached context when the user asks.",
+  )
+  lines.push(
+    "Work in a two-way loop: first state an ordered plan for every task item, then make code changes, run available tests/typechecks, preview the UI when relevant, report results, and ask before destructive file, git, credential, publishing, or external-service actions.",
+  )
+  if (item.safeguards.length) {
+    lines.push("Safeguards:")
+    lines.push(...item.safeguards.map((value) => `- ${value}`))
+  }
+  if (item.plan.length) {
+    lines.push("Current Autopilot plan:")
+    lines.push(
+      ...item.plan.map(
+        (step) => `- [${step.status}] ${step.title} (${step.owner}): ${step.description}`,
+      ),
+    )
+  }
+  if (item.events.length) {
+    lines.push("Recent two-way run events:")
+    lines.push(...item.events.map((event) => `- ${event.at} ${event.source}: ${event.title} - ${event.body}`))
+  }
+  return lines.join("\n\n")
+}
+
 const toOptimisticPart = (part: PromptRequestPart, sessionID: string, messageID: string): Part => {
   if (part.type === "text") {
     return {
@@ -349,6 +407,17 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
           id: Identifier.ascending("part"),
           type: "text",
           text: formatInspirationNote(item),
+          synthetic: true,
+        } satisfies PromptRequestPart,
+      ]
+    }
+
+    if (isAutopilotContext(item)) {
+      return [
+        {
+          id: Identifier.ascending("part"),
+          type: "text",
+          text: formatAutopilotNote(item),
           synthetic: true,
         } satisfies PromptRequestPart,
       ]

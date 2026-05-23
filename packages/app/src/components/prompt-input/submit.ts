@@ -201,12 +201,16 @@ type CommentItem = {
   preview?: string
 }
 
-type TransientItem = Extract<ContextItem, { type: "element" | "template" | "workflow" | "inspiration" }> & {
+type TransientItem = Extract<ContextItem, { type: "element" | "template" | "workflow" | "inspiration" | "autopilot" }> & {
   key: string
 }
 
 const isTransientItem = (item: ContextItem | (ContextItem & { key: string })): item is TransientItem =>
-  item.type === "element" || item.type === "template" || item.type === "workflow" || item.type === "inspiration"
+  item.type === "element" ||
+  item.type === "template" ||
+  item.type === "workflow" ||
+  item.type === "inspiration" ||
+  item.type === "autopilot"
 
 export function createPromptSubmit(input: PromptSubmitInput) {
   const navigate = useNavigate()
@@ -311,6 +315,25 @@ export function createPromptSubmit(input: PromptSubmitInput) {
           text: item.text,
           html: item.html,
           styleSignals: item.styleSignals,
+        })
+        continue
+      }
+
+      if (item.type === "autopilot") {
+        prompt.context.add({
+          type: "autopilot",
+          runID: item.runID,
+          sessionID: item.sessionID,
+          runtime: item.runtime,
+          goal: item.goal,
+          tasks: item.tasks,
+          workspace: item.workspace,
+          status: item.status,
+          agent: item.agent,
+          model: item.model,
+          plan: item.plan,
+          events: item.events,
+          safeguards: item.safeguards,
         })
         continue
       }
