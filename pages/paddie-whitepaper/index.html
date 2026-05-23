@@ -541,6 +541,80 @@
         line-height: 1.08;
       }
 
+      .download-panel {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr);
+        gap: 1px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background: var(--line);
+      }
+
+      .download-copy,
+      .install-guide {
+        min-width: 0;
+        padding: 28px;
+        background: var(--surface);
+      }
+
+      .download-copy {
+        background:
+          radial-gradient(circle at 80% 20%, rgba(255, 122, 58, 0.16), transparent 36%),
+          var(--surface-strong);
+      }
+
+      .download-copy h3 {
+        max-width: 14ch;
+        font-family: var(--display);
+        font-size: clamp(34px, 4vw, 58px);
+        font-weight: 400;
+      }
+
+      .steps {
+        display: grid;
+        gap: 14px;
+        margin-top: 22px;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr);
+        gap: 14px;
+        align-items: start;
+        padding: 14px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .step-number {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border: 1px solid rgba(255, 122, 58, 0.58);
+        color: var(--accent-soft);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .step strong {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--ink);
+      }
+
+      .step span {
+        color: var(--ink-dim);
+      }
+
+      .trust-note {
+        margin-top: 18px;
+        padding: 16px;
+        border: 1px solid rgba(255, 184, 146, 0.3);
+        color: var(--ink-dim);
+        background: rgba(255, 122, 58, 0.06);
+        font-size: 14px;
+      }
+
       .footer {
         display: flex;
         justify-content: space-between;
@@ -572,7 +646,8 @@
         .grid-2,
         .grid-3,
         .metrics,
-        .diagram {
+        .diagram,
+        .download-panel {
           grid-template-columns: 1fr;
         }
       }
@@ -648,6 +723,7 @@
             <a href="#features">Features</a>
             <a href="#technology">Technology</a>
             <a href="#autopilot">Autopilot</a>
+            <a href="#download">Download</a>
             <a href="#safety">Safety</a>
           </nav>
         </header>
@@ -662,6 +738,11 @@
             </p>
             <div class="cta-row">
               <a class="button button-primary" href="#whitepaper">Read the whitepaper</a>
+              <a
+                class="button"
+                href="https://github.com/michaelegbo/paddie-studio-ui-coder/releases/download/v1.4.72-beta.1/PaddieStudioBeta_1.4.72-beta.1_x64-setup.exe"
+                >Download beta</a
+              >
               <a class="button" href="https://github.com/michaelegbo/paddie-studio-ui-coder">View repository</a>
             </div>
           </div>
@@ -853,8 +934,71 @@
           </div>
         </section>
 
+        <section class="section" id="download">
+          <div class="section-number">05 / Download beta</div>
+          <div class="section-body">
+            <h2>Install the Windows beta with context.</h2>
+            <p class="section-intro">
+              The current Windows beta is distributed through GitHub Releases. Because early desktop builds may show a
+              Windows security prompt, the install path should be explicit: verify the download source first, then
+              continue only if you trust the Paddie Studio release.
+            </p>
+            <div class="download-panel">
+              <div class="download-copy">
+                <span class="tag">Windows beta</span>
+                <h3>Get Paddie Studio for local testing.</h3>
+                <p>
+                  Download the beta installer from the official GitHub release. The installer includes the desktop app
+                  and the local runtime pieces needed for Paddie Studio.
+                </p>
+                <div class="cta-row">
+                  <a
+                    class="button button-primary"
+                    href="https://github.com/michaelegbo/paddie-studio-ui-coder/releases/download/v1.4.72-beta.1/PaddieStudioBeta_1.4.72-beta.1_x64-setup.exe"
+                    >Download beta</a
+                  >
+                  <a class="button" href="https://github.com/michaelegbo/paddie-studio-ui-coder/releases/tag/v1.4.72-beta.1"
+                    >View release</a
+                  >
+                </div>
+              </div>
+              <div class="install-guide">
+                <span class="tag">Windows SmartScreen</span>
+                <h3>If Windows says "Don't run"</h3>
+                <div class="steps">
+                  <div class="step">
+                    <div class="step-number">1</div>
+                    <div>
+                      <strong>Confirm the file came from GitHub.</strong>
+                      <span>Use the official release link above and check the filename before opening it.</span>
+                    </div>
+                  </div>
+                  <div class="step">
+                    <div class="step-number">2</div>
+                    <div>
+                      <strong>Open Windows SmartScreen details.</strong>
+                      <span>If Windows shows "Windows protected your PC," choose "More info."</span>
+                    </div>
+                  </div>
+                  <div class="step">
+                    <div class="step-number">3</div>
+                    <div>
+                      <strong>Continue only if you trust the beta.</strong>
+                      <span>Choose "Run anyway" to start the installer, then follow the setup prompts.</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="trust-note">
+                  This guidance is only for the Paddie Studio beta downloaded from the linked GitHub release. Do not
+                  bypass Windows warnings for files from unknown sources.
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section class="section" id="safety">
-          <div class="section-number">05 / Safety model</div>
+          <div class="section-number">06 / Safety model</div>
           <div class="section-body">
             <h2>Power stays visible and bounded.</h2>
             <p class="section-intro">
@@ -900,7 +1044,7 @@
         </section>
 
         <section class="section">
-          <div class="section-number">06 / Closing note</div>
+          <div class="section-number">07 / Closing note</div>
           <div class="section-body">
             <div class="quote">
               <p>
