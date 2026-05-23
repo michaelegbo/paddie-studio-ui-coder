@@ -416,4 +416,68 @@ describe("prompt submit worktree selection", () => {
       selector: "main > section.hero",
     })
   })
+
+  test("restores Autopilot transient context when prompt send fails", async () => {
+    params = { id: "session-autopilot" }
+    promptAsyncError = new Error("network down")
+    contextItems.push({
+      key: "autopilot:run-1",
+      type: "autopilot",
+      runID: "run-1",
+      goal: "Build and verify a dashboard",
+      workspace: "/repo",
+      status: "running",
+      agent: "build",
+      model: { providerID: "openai", modelID: "gpt-5" },
+      plan: [
+        {
+          id: "verify",
+          title: "Verify",
+          description: "Run tests.",
+          owner: "opencode",
+          status: "pending",
+        },
+      ],
+      events: [
+        {
+          id: "run-1:goal",
+          source: "user",
+          title: "Goal accepted",
+          body: "Build and verify a dashboard",
+          at: "2026-05-22T10:00:00.000Z",
+        },
+      ],
+      safeguards: ["Ask before destructive actions."],
+    })
+
+    const submit = createPromptSubmit({
+      info: () => ({ id: "session-autopilot" }),
+      imageAttachments: () => [],
+      commentCount: () => 0,
+      autoAccept: () => false,
+      mode: () => "normal",
+      working: () => false,
+      editor: () => undefined,
+      queueScroll: () => undefined,
+      promptLength: (value) => value.reduce((sum, part) => sum + ("content" in part ? part.content.length : 0), 0),
+      addToHistory: () => undefined,
+      resetHistoryNavigation: () => undefined,
+      setMode: () => undefined,
+      setPopover: () => undefined,
+      onSubmit: () => undefined,
+    })
+
+    await submit.handleSubmit({ preventDefault: () => undefined } as unknown as Event)
+    for (let i = 0; i < 20 && contextAdds.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    expect(contextRemoves).toContain("autopilot:run-1")
+    expect(contextAdds).toHaveLength(1)
+    expect(contextAdds[0]).toMatchObject({
+      type: "autopilot",
+      runID: "run-1",
+      goal: "Build and verify a dashboard",
+    })
+  })
 })

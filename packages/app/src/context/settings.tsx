@@ -26,6 +26,7 @@ export interface Settings {
     paddieStudioFeatures: boolean
     betaFeatures: boolean
     inspiration: boolean
+    autopilot: boolean
     showFileTree: boolean
     showNavigation: boolean
     showSearch: boolean
@@ -114,6 +115,7 @@ const defaultSettings: Settings = {
     paddieStudioFeatures: true,
     betaFeatures: false,
     inspiration: true,
+    autopilot: true,
     showFileTree: true,
     showNavigation: true,
     showSearch: true,
@@ -171,7 +173,8 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
           if (
             typeof current.paddieStudioFeatures === "boolean" &&
             typeof current.betaFeatures === "boolean" &&
-            typeof current.inspiration === "boolean"
+            typeof current.inspiration === "boolean" &&
+            typeof current.autopilot === "boolean"
           ) {
             return value
           }
@@ -190,6 +193,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
                 typeof current.betaFeatures === "boolean" ? current.betaFeatures : defaultSettings.general.betaFeatures,
               inspiration:
                 typeof current.inspiration === "boolean" ? current.inspiration : defaultSettings.general.inspiration,
+              autopilot: typeof current.autopilot === "boolean" ? current.autopilot : defaultSettings.general.autopilot,
             },
           }
         },
@@ -244,6 +248,10 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         inspiration: withFallback(() => store.general?.inspiration, defaultSettings.general.inspiration),
         setInspiration(value: boolean) {
           setStore("general", "inspiration", value)
+        },
+        autopilot: withFallback(() => store.general?.autopilot, defaultSettings.general.autopilot),
+        setAutopilot(value: boolean) {
+          setStore("general", "autopilot", value)
         },
         showFileTree: withFallback(() => store.general?.showFileTree, defaultSettings.general.showFileTree),
         setShowFileTree(value: boolean) {

@@ -34,6 +34,14 @@ export function contextItemChip(item: ContextItem & { key: string }) {
     }
   }
 
+  if (item.type === "autopilot") {
+    return {
+      label: "Autopilot",
+      body: item.goal,
+      icon: "brain" as const,
+    }
+  }
+
   return {
     label: item.label || item.partName || item.templateName,
     body: item.selector || item.description,

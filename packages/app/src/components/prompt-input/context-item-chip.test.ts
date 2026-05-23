@@ -52,4 +52,24 @@ describe("contextItemChip", () => {
       icon: "window-cursor",
     })
   })
+
+  test("labels Autopilot references by goal", () => {
+    expect(
+      contextItemChip({
+        key: "autopilot:run-1",
+        type: "autopilot",
+        runID: "run-1",
+        goal: "Build and verify a dashboard",
+        workspace: "/repo",
+        status: "running",
+        plan: [],
+        events: [],
+        safeguards: [],
+      }),
+    ).toMatchObject({
+      label: "Autopilot",
+      body: "Build and verify a dashboard",
+      icon: "brain",
+    })
+  })
 })
