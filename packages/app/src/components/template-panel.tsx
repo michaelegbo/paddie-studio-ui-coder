@@ -90,6 +90,7 @@ const mini = {
   h: 940,
   scale: 0.18,
 } as const
+const GALLERY_PREVIEW_PREFETCH_LIMIT = 30
 
 const miniH = Math.round(mini.h * mini.scale)
 const miniW = Math.round(mini.w * mini.scale)
@@ -112,6 +113,7 @@ export function TemplatePanel(props: {
 
   const [detailCache, setDetailCache] = createSignal<Record<string, UITemplate>>({})
   const [detailLoading, setDetailLoading] = createSignal(false)
+  const [galleryPreviewLoading, setGalleryPreviewLoading] = createSignal<Record<string, boolean>>({})
 
   const [id, setID] = createSignal("")
   const [pid, setPID] = createSignal("full")
@@ -151,6 +153,14 @@ export function TemplatePanel(props: {
     if (!cur || !text.trim()) return ""
     return previewDoc(url(), text, cur.parts, "browse")
   })
+  const galleryPreview = (item: UITemplateMeta): { kind: "src" | "srcdoc"; value: string } | undefined => {
+    const cur = detailCache()[item.id]
+    if (!cur) return
+    const link = previewUrl(cur)
+    const text = previewHtml(cur)
+    if (text.trim() && templateGalleryPreviewReady(text)) return { kind: "srcdoc", value: previewDoc(link, text, cur.parts, "browse") }
+    if (link) return { kind: "src", value: link }
+  }
   const hit = createMemo(() => {
     const t = tpl()
     if (!t) return undefined
@@ -174,6 +184,30 @@ export function TemplatePanel(props: {
   })
 
   let fetchInFlight = false
+  let galleryPreviewPrefetchRun = 0
+  const fetchGalleryPreview = async (templateId: string) => {
+    if (detailCache()[templateId] || galleryPreviewLoading()[templateId]) return
+    setGalleryPreviewLoading((prev) => ({ ...prev, [templateId]: true }))
+    try {
+      const data = await paddieApi.get<UITemplate>(`/studio/ui-templates/${templateId}?v=${Date.now()}`)
+      setDetailCache((prev) => (prev[templateId] ? prev : { ...prev, [templateId]: data }))
+    } catch {
+      // Gallery previews are opportunistic. Opening the template still performs the full load/error flow.
+    } finally {
+      setGalleryPreviewLoading((prev) => {
+        const next = { ...prev }
+        delete next[templateId]
+        return next
+      })
+    }
+  }
+  const prefetchGalleryPreviews = async (items: UITemplateMeta[]) => {
+    const runID = ++galleryPreviewPrefetchRun
+    for (const item of items.filter((template) => canAccess(template.tier)).slice(0, GALLERY_PREVIEW_PREFETCH_LIMIT)) {
+      if (runID !== galleryPreviewPrefetchRun) return
+      await fetchGalleryPreview(item.id)
+    }
+  }
   const fetchList = async (opts?: { force?: boolean }): Promise<boolean> => {
     if (!auth.isAuthenticated()) return false
     if (fetchInFlight && !opts?.force) return false
@@ -185,6 +219,7 @@ export function TemplatePanel(props: {
       setList(data)
       setListError(undefined)
       if (data.length > 0 && !id()) setID(data[0].id)
+      void prefetchGalleryPreviews(data)
       return true
     } catch (err) {
       setListError(err instanceof Error ? err.message : "Failed to load templates")
@@ -688,7 +723,7 @@ export function TemplatePanel(props: {
                     {section() === "workflow"
                       ? "Build and manage Paddie workflows with the same account used for Studio templates."
                       : section() === "autopilot"
-                        ? "Coordinate OpenClaw-style planning with the existing Paddie chat and code-builder loop."
+                        ? "Plan, build, test, preview, and iterate through a scoped native opencode worker session."
                       : section() === "inspiration"
                         ? "Browse a public website, capture a selectable snapshot, and attach page or element references to chat."
                         : "Browse a starter first, then open it in a desktop canvas. Curated parts stay hidden until you select one or open them yourself."}
@@ -787,11 +822,35 @@ export function TemplatePanel(props: {
                                         {item.name}
                                       </div>
                                     </div>
-                                    <img
-                                      src={item.thumb_url?.trim() || DEFAULT_TEMPLATE_THUMB_DATA_URL}
-                                      class="block h-[calc(100%-40px)] w-full object-cover"
-                                      alt={`${item.name} preview`}
-                                    />
+                                    <Show
+                                      when={galleryPreview(item)}
+                                      fallback={
+                                        <div class="relative h-[calc(100%-40px)] w-full overflow-hidden">
+                                          <img
+                                            src={item.thumb_url?.trim() || DEFAULT_TEMPLATE_THUMB_DATA_URL}
+                                            class="block size-full object-cover"
+                                            alt={`${item.name} preview`}
+                                          />
+                                          <Show when={galleryPreviewLoading()[item.id]}>
+                                            <div class="absolute inset-0 flex items-center justify-center bg-[#111218]/45 text-11-medium text-text-weak backdrop-blur-[1px]">
+                                              Loading preview
+                                            </div>
+                                          </Show>
+                                        </div>
+                                      }
+                                    >
+                                      {(preview) => (
+                                        <iframe
+                                          src={preview().kind === "src" ? preview().value : undefined}
+                                          srcdoc={preview().kind === "srcdoc" ? preview().value : undefined}
+                                          sandbox="allow-scripts allow-same-origin"
+                                          loading="lazy"
+                                          tabIndex={-1}
+                                          class="pointer-events-none block h-[calc(100%-40px)] w-full border-0 bg-white"
+                                          title={`${item.name} gallery preview`}
+                                        />
+                                      )}
+                                    </Show>
                                   </div>
                                 </div>
                               </div>

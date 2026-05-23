@@ -75,6 +75,22 @@ describe("buildRequestParts", () => {
     expect(files.map((part) => (part.type === "file" ? part.filename : ""))).toEqual(["a.png", "b.pdf"])
   })
 
+  test("does not add Autopilot context to normal prompts", () => {
+    const result = buildRequestParts({
+      prompt: [{ type: "text", content: "normal chat", start: 0, end: 11 }],
+      context: [],
+      images: [],
+      text: "normal chat",
+      messageID: "msg_normal",
+      sessionID: "ses_normal",
+      sessionDirectory: "/repo",
+    })
+
+    expect(result.requestParts).toHaveLength(1)
+    expect(result.requestParts[0]).toMatchObject({ type: "text", text: "normal chat" })
+    expect(result.requestParts.some((part) => part.type === "text" && part.synthetic)).toBe(false)
+  })
+
   test("deduplicates context files when prompt already includes same path", () => {
     const prompt: Prompt = [{ type: "file", path: "src/foo.ts", content: "@src/foo.ts", start: 0, end: 11 }]
 
@@ -197,6 +213,7 @@ describe("buildRequestParts", () => {
           type: "autopilot",
           runID: "run-1",
           goal: "Build and verify a dashboard",
+          tasks: ["Build a dashboard", "Verify it"],
           workspace: "/repo",
           status: "running",
           agent: "build",
@@ -234,6 +251,8 @@ describe("buildRequestParts", () => {
     if (synthetic?.type === "text") {
       expect(synthetic.text).toContain("Paddie Studio Autopilot")
       expect(synthetic.text).toContain("Build and verify a dashboard")
+      expect(synthetic.text).toContain("Task queue")
+      expect(synthetic.text).toContain("1. [pending] Build a dashboard")
       expect(synthetic.text).toContain("Selected model: openai/gpt-5 (high)")
       expect(synthetic.text).toContain("two-way loop")
       expect(synthetic.text).toContain("Run tests and preview the UI")

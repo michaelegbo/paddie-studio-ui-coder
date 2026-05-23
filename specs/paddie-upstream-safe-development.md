@@ -2,7 +2,7 @@
 
 Paddie Studio is built on top of upstream opencode. We still need to keep pulling fixes, architecture changes, provider updates, SDK changes, and UI improvements from upstream. That means Paddie-specific work must be implemented in a way that keeps upstream merges practical.
 
-These guidelines apply to Paddie Studio features, including Studio, Templates, Inspiration, Workflow Builder, Autopilot, OpenClaw integration, desktop packaging, and any Paddie-specific chat/code-builder behavior.
+These guidelines apply to Paddie Studio features, including Studio, Templates, Inspiration, Workflow Builder, Paddie Native Autopilot, desktop packaging, and any Paddie-specific chat/code-builder behavior.
 
 ## Core Principle
 
@@ -33,7 +33,7 @@ If Paddie changes are spread through upstream-owned code paths, every upstream s
 Prefer this shape:
 
 ```text
-Upstream opencode/OpenClaw behavior
+Upstream opencode behavior
   ^
   | stable API / CLI / Gateway / session / tool boundary
   v
@@ -50,23 +50,28 @@ Avoid this shape:
 Upstream core behavior with hidden Paddie conditionals scattered throughout
 ```
 
-## Autopilot And OpenClaw
+## Paddie Native Autopilot
 
 Autopilot must be optional and isolated.
 
-OpenClaw should act as the orchestrator/harness. Paddie should provide a thin adapter that connects OpenClaw to:
+Paddie Native Autopilot uses opencode's existing agentic runtime as the harness. Paddie should provide a thin controller that connects a dedicated opencode worker session to:
 
 - the active Paddie workspace
 - the selected Paddie-connected model/provider
-- existing Paddie/opencode chat and code-builder worker paths
+- opencode sessions, prompt processing, shell/tool execution, permissions, status, and message events
+- Paddie templates and workflow builder context
 - browser preview/testing
 - approvals
 - logs and artifacts
 - stop, pause, and resume controls
 
-The adapter is not the intelligence. The intelligence comes from OpenClaw plus the selected model. The adapter should route events, enforce boundaries, persist logs, and expose Paddie capabilities safely.
+The controller is not a second model or credential system. The intelligence comes from the selected Paddie/opencode provider, model, agent, and variant. The controller should route events, enforce boundaries, persist logs, and expose Paddie capabilities safely.
 
-Autopilot should send scoped work into existing Paddie/opencode worker flows and receive structured results back. It should not make every normal chat submit an Autopilot run.
+Autopilot should create or reuse its own scoped opencode worker session for execution and receive structured results back through opencode events. It must not type into or submit the normal chat composer to start a run. Attaching an Autopilot run to normal chat is optional discussion context only.
+
+Autopilot may parse Paddie-specific progress markers from its own scoped worker session, such as task start/done/blocked markers and final handoff summaries. Those markers are an Autopilot presentation contract only; they must not change normal opencode chat message handling.
+
+Autopilot may run multiple native sessions at once when the user selects multiple codebases. Each run must keep its own workspace, worker session, activity timeline, and handoff. Cross-codebase runs must use explicit user-selected targets and must not broaden normal chat or code-builder scope.
 
 ## Existing Chat And Code Builder Must Stay Stable
 
@@ -121,10 +126,10 @@ Sometimes an upstream-owned file must be touched. That is acceptable only when:
 
 Optional Paddie features should fail closed and leave normal behavior intact.
 
-For features such as Autopilot/OpenClaw:
+For features such as Autopilot:
 
-- app startup must not require OpenClaw
-- missing OpenClaw should show setup/status UI, not break Studio
+- app startup must not require Autopilot
+- missing optional Studio resources should show setup/status UI, not break Studio
 - disabled feature flags should remove or disable only the feature surface
 - failed feature runtimes should not block normal chat/code builder
 - stop/pause/cancel must be respected before the next autonomous action
@@ -146,12 +151,12 @@ Before merging Paddie-specific work, verify:
 
 ## GitHub Planning Links
 
-For the OpenClaw Autopilot work, keep these issues aligned with implementation:
+For Autopilot work, keep these issues aligned with implementation. The active implementation direction is Paddie Native Autopilot over opencode's native session/tool runtime:
 
-- #28 Epic: Add OpenClaw Autopilot orchestration to Paddie Studio
-- #38 Add two-way OpenClaw/opencode agent communication
+- #28 Autopilot orchestration epic
+- #38 Two-way Autopilot/opencode agent communication
 - #39 Define Paddie Autopilot adapter architecture
 - #40 Keep Autopilot optional and isolated from normal chat/code builder
 - #42 Route Autopilot through existing Paddie chat and code-builder systems
-- #43 Keep OpenClaw/opencode integration upstream-safe
+- #43 Keep Autopilot/opencode integration upstream-safe
 - #44 Support Autopilot on existing and connected projects

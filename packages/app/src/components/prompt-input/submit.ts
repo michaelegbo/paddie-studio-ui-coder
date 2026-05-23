@@ -323,7 +323,10 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         prompt.context.add({
           type: "autopilot",
           runID: item.runID,
+          sessionID: item.sessionID,
+          runtime: item.runtime,
           goal: item.goal,
+          tasks: item.tasks,
           workspace: item.workspace,
           status: item.status,
           agent: item.agent,

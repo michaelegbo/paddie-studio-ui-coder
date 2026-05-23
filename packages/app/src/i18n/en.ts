@@ -760,6 +760,8 @@ export const dict = {
   "settings.general.row.betaFeatures.description": "Show experimental Studio features before they become stable",
   "settings.general.row.inspiration.title": "Inspiration",
   "settings.general.row.inspiration.description": "Show Inspiration inside Studio when Beta features are enabled",
+  "settings.general.row.autopilot.title": "Autopilot",
+  "settings.general.row.autopilot.description": "Show the isolated Paddie Native Autopilot tab inside Studio",
   "settings.general.row.showFileTree.title": "File tree",
   "settings.general.row.showFileTree.description": "Show the file tree toggle and panel in desktop sessions",
   "settings.general.row.showNavigation.title": "Navigation controls",
