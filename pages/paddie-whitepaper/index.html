@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="A Paddie Studio whitepaper covering the stable desktop foundation, beta release, and Paddie Native Autopilot direction."
+      content="A Paddie Studio whitepaper covering the product features, Studio surfaces, native Autopilot, and underlying technology architecture."
     />
     <meta property="og:title" content="Paddie Studio Whitepaper" />
     <meta
       property="og:description"
-      content="From stable opencode desktop to Paddie Native Autopilot beta."
+      content="The product and technology behind Paddie Studio."
     />
     <meta property="og:type" content="website" />
     <title>Paddie Studio Whitepaper</title>
@@ -641,25 +641,24 @@
             <span class="mark">dd</span>
             <span class="brand-text">
               <span class="brand-title">Paddie Studio</span>
-              <span class="brand-subtitle">Whitepaper / stable to beta</span>
+              <span class="brand-subtitle">Whitepaper / features and technology</span>
             </span>
           </a>
           <nav class="nav" aria-label="Whitepaper sections">
-            <a href="#thesis">Thesis</a>
-            <a href="#architecture">Architecture</a>
-            <a href="#beta">Beta</a>
-            <a href="https://github.com/michaelegbo/paddie-studio-ui-coder/releases/tag/v1.4.72-beta.1">Release</a>
+            <a href="#features">Features</a>
+            <a href="#technology">Technology</a>
+            <a href="#autopilot">Autopilot</a>
+            <a href="#safety">Safety</a>
           </nav>
         </header>
 
         <section class="hero" id="top">
           <div class="hero-copy">
             <p class="eyebrow"><span class="loop" aria-hidden="true"></span> Paddie Whitepaper / 2026</p>
-            <h1>Paddie Studio from <em>stable</em> to beta.</h1>
+            <h1>Paddie Studio, the <em>visual AI</em> development workspace.</h1>
             <p class="lead">
-              Paddie Studio extends opencode into a visual, template-aware desktop studio. The beta track moves
-              that foundation toward native autonomous work: planning, building, testing, previewing, and reporting
-              inside scoped opencode sessions.
+              Paddie Studio brings chat-based coding, visual templates, website inspiration, workflow generation,
+              project previews, and autonomous implementation into one desktop workspace built on opencode.
             </p>
             <div class="cta-row">
               <a class="button button-primary" href="#whitepaper">Read the whitepaper</a>
@@ -678,16 +677,16 @@
             </video>
             <div class="hero-meta">
               <div>
-                <div class="meta-label">Stable base</div>
-                <div class="meta-value">v1.4.71</div>
+                <div class="meta-label">Core runtime</div>
+                <div class="meta-value">opencode</div>
               </div>
               <div>
-                <div class="meta-label">Beta release</div>
-                <div class="meta-value">v1.4.72-beta.1</div>
+                <div class="meta-label">Desktop shell</div>
+                <div class="meta-value">Tauri</div>
               </div>
               <div>
-                <div class="meta-label">Runtime</div>
-                <div class="meta-value">opencode native</div>
+                <div class="meta-label">Studio layer</div>
+                <div class="meta-value">Paddie</div>
               </div>
             </div>
           </div>
@@ -696,49 +695,65 @@
         <section class="section" id="whitepaper">
           <div class="section-number">01 / Executive summary</div>
           <div class="section-body">
-            <h2>What changed from <em>stable</em> to beta.</h2>
+            <h2>What Paddie Studio is built to do.</h2>
             <p class="section-intro">
-              The stable build proves the Paddie desktop shell, Studio surface, templates, workflow embedding, and
-              upstream opencode foundation. The beta builds on that base with Paddie Native Autopilot: an additive
-              orchestration layer that uses opencode sessions and tools instead of introducing a second AI runtime.
+              Paddie Studio is a desktop product for building software with AI while keeping the work visible. It
+              combines the proven opencode agentic coding engine with Paddie-owned Studio tools for templates,
+              inspiration references, workflow builder context, previews, and native Autopilot orchestration.
             </p>
             <div class="metrics">
               <div class="metric">
-                <div class="metric-value">1</div>
-                <div class="metric-label">native runtime</div>
+                <div class="metric-value">AI</div>
+                <div class="metric-label">connected models</div>
               </div>
               <div class="metric">
-                <div class="metric-value">4</div>
-                <div class="metric-label">studio surfaces</div>
+                <div class="metric-value">UI</div>
+                <div class="metric-label">templates and inspiration</div>
               </div>
               <div class="metric">
-                <div class="metric-value">0</div>
-                <div class="metric-label">new credential stores</div>
+                <div class="metric-value">Flow</div>
+                <div class="metric-label">workflow to code</div>
               </div>
               <div class="metric">
-                <div class="metric-value">100%</div>
-                <div class="metric-label">scoped execution goal</div>
+                <div class="metric-value">Run</div>
+                <div class="metric-label">native autopilot</div>
               </div>
             </div>
           </div>
         </section>
 
-        <section class="section" id="thesis">
-          <div class="section-number">02 / Product thesis</div>
+        <section class="section" id="features">
+          <div class="section-number">02 / Product features</div>
           <div class="section-body">
             <h2>The studio becomes the control room.</h2>
             <p class="section-intro">
-              Paddie Studio is not a separate fork of the coding agent. It is a product layer around opencode that
-              gives users visual tools, reusable templates, workflow context, browser feedback, and autonomous run
-              state while keeping normal chat and code-builder behavior intact.
+              The main product idea is simple: keep the coding agent, the project, the design reference, the workflow,
+              and the preview in the same place. Users can move between normal chat, Studio tools, and Autopilot runs
+              without losing the workspace context.
             </p>
             <div class="grid grid-3">
+              <article class="card">
+                <span class="tag">Paddie Chat</span>
+                <h3>AI coding stays familiar.</h3>
+                <p>
+                  Normal chat and code-builder flows remain powered by opencode. Paddie adds context and Studio tools
+                  around that flow instead of replacing the core chat experience.
+                </p>
+              </article>
               <article class="card">
                 <span class="tag">Templates</span>
                 <h3>Design references become build context.</h3>
                 <p>
                   The Studio template system turns polished UI starters into visible, attachable implementation
                   references that can be adapted across project stacks.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Inspiration</span>
+                <h3>Public websites become design signals.</h3>
+                <p>
+                  Public pages can be captured as sanitized references for layout, hierarchy, color, typography, and
+                  motion intent without copying private assets or authenticated content.
                 </p>
               </article>
               <article class="card">
@@ -750,93 +765,102 @@
                 </p>
               </article>
               <article class="card">
-                <span class="tag">Inspiration</span>
-                <h3>Public websites become motion references.</h3>
+                <span class="tag">Preview</span>
+                <h3>Output is checked where it runs.</h3>
                 <p>
-                  Public pages can be captured as sanitized design references, preserving visible layout, typography,
-                  color, and motion intent without copying private assets.
+                  Paddie can detect local project previews, inspect browser output, surface errors, and feed failures
+                  back into the build loop.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Autopilot</span>
+                <h3>Complex tasks become managed runs.</h3>
+                <p>
+                  Autopilot plans work, breaks goals into tasks, coordinates scoped opencode worker sessions, verifies
+                  output, and hands results back to the user.
                 </p>
               </article>
             </div>
           </div>
         </section>
 
-        <section class="section" id="architecture">
-          <div class="section-number">03 / Native architecture</div>
+        <section class="section" id="technology">
+          <div class="section-number">03 / Technology architecture</div>
           <div class="section-body">
-            <h2>Autopilot uses opencode as the harness.</h2>
+            <h2>The technology is layered, not forked.</h2>
             <p class="section-intro">
-              The beta direction removes OpenClaw from the execution path. Autopilot becomes a Paddie-owned controller
-              that starts scoped opencode worker sessions, uses the selected model and provider, and listens for
-              progress, tool, shell, status, and handoff events.
+              Paddie Studio is built as an additive desktop and Studio layer around opencode. The architecture keeps
+              provider configuration, sessions, shell execution, permissions, and coding tools in the opencode runtime,
+              while Paddie owns the Studio-specific UI, adapters, context packaging, and orchestration views.
             </p>
-            <div class="diagram" aria-label="Paddie Native Autopilot architecture">
+            <div class="diagram" aria-label="Paddie Studio technology architecture">
               <div class="diagram-step">
-                <strong>Studio</strong>
-                <span>User goal, selected workspace, templates, workflows, preview context.</span>
+                <strong>Desktop app</strong>
+                <span>Tauri packages the local Windows desktop experience and sidecar runtime.</span>
               </div>
               <div class="diagram-step">
-                <strong>Controller</strong>
-                <span>Plans the run, owns state, queues tasks, enforces approval boundaries.</span>
+                <strong>App UI</strong>
+                <span>Solid, TypeScript, and Paddie Studio components render chat, Studio, and workbench surfaces.</span>
               </div>
               <div class="diagram-step">
-                <strong>opencode session</strong>
-                <span>Dedicated worker session using the current agent, model, provider, and variant.</span>
+                <strong>opencode</strong>
+                <span>Sessions, prompts, tools, shell execution, permissions, providers, and model routing.</span>
               </div>
               <div class="diagram-step">
-                <strong>Tools</strong>
-                <span>Files, commands, tests, preview detection, browser checks, and task markers.</span>
+                <strong>Paddie APIs</strong>
+                <span>Templates, workflow catalog, generated clients, account state, and Studio resources.</span>
               </div>
               <div class="diagram-step">
-                <strong>Handoff</strong>
-                <span>Changed files, checks, preview status, artifacts, blockers, and residual risks.</span>
+                <strong>Preview loop</strong>
+                <span>Local server detection, browser inspection, console checks, screenshots, and validation output.</span>
               </div>
             </div>
           </div>
         </section>
 
-        <section class="section" id="beta">
-          <div class="section-number">04 / Beta release</div>
+        <section class="section" id="autopilot">
+          <div class="section-number">04 / Native Autopilot</div>
           <div class="section-body">
-            <h2>The beta is about controlled autonomy.</h2>
+            <h2>Autopilot turns goals into managed execution.</h2>
             <p class="section-intro">
-              Paddie Native Autopilot is designed to do real work while staying visible, stoppable, and isolated from
-              normal chat. The user sees a plan before execution, live activity after the run starts, and a final
-              handoff when the worker finishes.
+              Paddie Native Autopilot is the autonomous layer inside Studio. It uses the currently selected opencode
+              model and provider, creates scoped worker sessions, keeps normal chat isolated, and shows live activity
+              as the run moves from planning to implementation, verification, preview, iteration, and handoff.
             </p>
             <div class="timeline">
               <div class="timeline-item">
-                <div class="timeline-date">Stable</div>
+                <div class="timeline-date">Plan</div>
                 <div>
-                  <h3>Paddie Studio v1.4.71</h3>
-                  <p>Desktop release with the Studio foundation, template flows, workflow embedding, and release channel policy.</p>
+                  <h3>Break the request into tasks</h3>
+                  <p>Autopilot keeps one overall goal, creates a task queue, and shows what is pending, active, done, or blocked.</p>
                 </div>
               </div>
               <div class="timeline-item">
-                <div class="timeline-date">Beta</div>
+                <div class="timeline-date">Execute</div>
                 <div>
-                  <h3>Paddie Studio v1.4.72-beta.1</h3>
-                  <p>Native Autopilot moves into beta with scoped runs, task planning, live activity, and opencode worker handoff.</p>
+                  <h3>Use scoped opencode workers</h3>
+                  <p>The worker edits files, runs commands, uses templates or workflows, and reports progress through the run timeline.</p>
                 </div>
               </div>
               <div class="timeline-item">
-                <div class="timeline-date">Next</div>
+                <div class="timeline-date">Verify</div>
                 <div>
-                  <h3>Hardening the loop</h3>
-                  <p>Priority work continues on previews, approvals, persisted artifacts, multi-codebase runs, and richer status reporting.</p>
+                  <h3>Test, preview, and hand off</h3>
+                  <p>Checks and browser feedback are collected, failures can be fed back into the loop, and the final result is summarized.</p>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        <section class="section">
+        <section class="section" id="safety">
           <div class="section-number">05 / Safety model</div>
           <div class="section-body">
-            <h2>Autonomy stays additive and upstream-safe.</h2>
+            <h2>Power stays visible and bounded.</h2>
             <p class="section-intro">
-              Paddie-specific features should sit around opencode, not replace it. Normal chat, model/provider setup,
-              and code-builder behavior must work unchanged when Autopilot is disabled or unused.
+              The product is designed so advanced Studio features do not destabilize the normal coding path. Paddie
+              features are optional, scoped to selected workspaces, and built around explicit context, approval, and
+              upstream-safe integration boundaries.
             </p>
             <div class="grid grid-2">
               <article class="card">
@@ -855,6 +879,22 @@
                   actions outside the workspace require approval before execution.
                 </p>
               </article>
+              <article class="card">
+                <span class="tag">Provider reuse</span>
+                <h3>The selected model stays the source of intelligence.</h3>
+                <p>
+                  Paddie does not create a second credential system. Autopilot and chat use the provider, model, agent,
+                  and variant already selected in the app.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Upstream-safe</span>
+                <h3>Paddie features sit at clear boundaries.</h3>
+                <p>
+                  Studio tools are implemented as additive adapters around opencode so upstream chat, sessions, tools,
+                  and provider behavior remain practical to sync.
+                </p>
+              </article>
             </div>
           </div>
         </section>
@@ -864,15 +904,16 @@
           <div class="section-body">
             <div class="quote">
               <p>
-                Paddie Studio turns coding assistance into a visible studio workflow: plan first, act in scoped
-                sessions, verify in public, and hand the result back clearly.
+                Paddie Studio turns AI software creation into a visible studio workflow: bring in the right design,
+                attach the right workflow, run the right model, preview the result, and keep every autonomous step
+                traceable.
               </p>
             </div>
           </div>
         </section>
 
         <footer class="footer">
-          <span>Paddie Studio whitepaper / stable to beta</span>
+          <span>Paddie Studio whitepaper / features and technology</span>
           <span>
             <a href="https://github.com/michaelegbo/paddie-studio-ui-coder">GitHub</a>
             ·
