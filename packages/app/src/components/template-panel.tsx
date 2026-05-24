@@ -14,6 +14,11 @@ import { useAuth } from "@/context/auth"
 import { useSettings } from "@/context/settings"
 import { paddieApi, UpgradeRequiredError } from "@/lib/paddie-api"
 import { STUDIO_LOGIN_URL, STUDIO_SIGNUP_URL } from "@/lib/paddie-links"
+import {
+  trackPaddieStudioEvent,
+  type PaddieStudioEventName,
+  type PaddieStudioEventStatus,
+} from "@/lib/paddie-telemetry"
 import { AutopilotPanel } from "@/components/autopilot-panel"
 import { InspirationPanel } from "@/components/inspiration-panel"
 import { WorkflowBuilder, type WorkflowAttachPayload } from "@/components/workflow-builder"
@@ -59,7 +64,10 @@ function LoginCard(props: { desc?: string; openLink: (url: string) => void }) {
         </div>
         <Button
           class="mt-5 h-10 w-full justify-center text-13-medium"
-          onClick={() => props.openLink(STUDIO_LOGIN_URL)}
+          onClick={() => {
+            trackPaddieStudioEvent("login_browser_opened", { status: "attempt" })
+            props.openLink(STUDIO_LOGIN_URL)
+          }}
         >
           Sign in with browser
         </Button>
@@ -71,7 +79,13 @@ function LoginCard(props: { desc?: string; openLink: (url: string) => void }) {
           <button
             type="button"
             class="text-text-base underline underline-offset-2 hover:text-text-strong"
-            onClick={() => props.openLink(STUDIO_SIGNUP_URL)}
+            onClick={() => {
+              trackPaddieStudioEvent("login_browser_opened", {
+                status: "attempt",
+                metadata: { mode: "signup" },
+              })
+              props.openLink(STUDIO_SIGNUP_URL)
+            }}
           >
             Create account
           </button>
@@ -186,6 +200,29 @@ export function TemplatePanel(props: {
   const providerCatalogReady = createMemo(() => providers.all().length > 0)
   const connectedModelProviderCount = createMemo(() => providers.paid().length)
 
+  const trackTemplate = (
+    event: PaddieStudioEventName,
+    status: PaddieStudioEventStatus,
+    template?: Pick<UITemplateMeta, "id" | "name" | "stack" | "tier">,
+    metadata?: Record<string, unknown>,
+    message?: string,
+  ) => {
+    trackPaddieStudioEvent(event, {
+      status,
+      email: auth.user()?.email,
+      userID: auth.user()?.userId,
+      tenantID: auth.user()?.tenantId,
+      templateID: template?.id,
+      templateName: template?.name,
+      message,
+      metadata: {
+        stack: template?.stack,
+        tier: template?.tier,
+        ...metadata,
+      },
+    })
+  }
+
   const dismissProviderOnboarding = () => {
     markStudioProviderOnboardingSeen()
     setShowProviderOnboarding(false)
@@ -244,8 +281,14 @@ export function TemplatePanel(props: {
     try {
       const data = await paddieApi.get<UITemplate>(`/studio/ui-templates/${templateId}?v=${Date.now()}`)
       setDetailCache((prev) => (prev[templateId] ? prev : { ...prev, [templateId]: data }))
+      trackTemplate("template_gallery_preview_loaded", "success", data, {
+        previewReady: templateGalleryPreviewReady(previewHtml(data)),
+      })
     } catch {
       // Gallery previews are opportunistic. Opening the template still performs the full load/error flow.
+      trackTemplate("template_gallery_preview_failed", "failure", list().find((template) => template.id === templateId), {
+        templateID: templateId,
+      })
     } finally {
       setGalleryPreviewLoading((prev) => {
         const next = { ...prev }
@@ -273,9 +316,24 @@ export function TemplatePanel(props: {
       setListError(undefined)
       if (data.length > 0 && !id()) setID(data[0].id)
       void prefetchGalleryPreviews(data)
+      trackPaddieStudioEvent("template_catalog_loaded", {
+        status: "success",
+        email: auth.user()?.email,
+        userID: auth.user()?.userId,
+        tenantID: auth.user()?.tenantId,
+        metadata: { count: data.length },
+      })
       return true
     } catch (err) {
-      setListError(err instanceof Error ? err.message : "Failed to load templates")
+      const message = err instanceof Error ? err.message : "Failed to load templates"
+      setListError(message)
+      trackPaddieStudioEvent("template_catalog_failed", {
+        status: "failure",
+        email: auth.user()?.email,
+        userID: auth.user()?.userId,
+        tenantID: auth.user()?.tenantId,
+        message,
+      })
       return false
     } finally {
       setListLoading(false)
@@ -291,16 +349,26 @@ export function TemplatePanel(props: {
         `/studio/ui-templates/${templateId}?v=${Date.now()}`,
       )
       setDetailCache((prev) => ({ ...prev, [templateId]: data }))
+      trackTemplate("template_detail_loaded", "success", data, {
+        parts: data.parts.length,
+        files: data.files.length,
+      })
       return true
     } catch (err) {
       if (err instanceof UpgradeRequiredError) {
         setUpgradeInfo({ required_tier: err.required_tier, current_tier: err.current_tier })
         setShowUpgrade(true)
         setView("library")
+        trackTemplate("template_detail_failed", "failure", list().find((template) => template.id === templateId), {
+          requiredTier: err.required_tier,
+          currentTier: err.current_tier,
+        }, err.message)
         return false
       }
-      showToast({ variant: "error", title: "Failed to load template", description: err instanceof Error ? err.message : String(err) })
+      const message = err instanceof Error ? err.message : String(err)
+      showToast({ variant: "error", title: "Failed to load template", description: message })
       setView("library")
+      trackTemplate("template_detail_failed", "failure", list().find((template) => template.id === templateId), undefined, message)
       return false
     } finally {
       setDetailLoading(false)
@@ -381,6 +449,10 @@ export function TemplatePanel(props: {
   }
 
   const open = async (next: string) => {
+    const item = list().find((template) => template.id === next)
+    trackTemplate("template_opened", "attempt", item, {
+      locked: item ? !canAccess(item.tier) : false,
+    })
     setID(next)
     setPID("full")
     setPick(false)
@@ -445,6 +517,14 @@ export function TemplatePanel(props: {
         description: opts?.label ? `${cur.name} - ${opts.label}` : `${cur.name} - ${item.name}`,
       })
     }
+    trackTemplate("template_attached", "success", cur, {
+      partID: item.id,
+      partName: item.name,
+      selector: opts?.selector,
+      label: opts?.label,
+      hasPickedHtml: Boolean(opts?.html),
+      hasPickedText: Boolean(opts?.text),
+    })
   }
 
   const attachWorkflow = (payload: WorkflowAttachPayload) => {
@@ -487,6 +567,20 @@ export function TemplatePanel(props: {
       title: "Workflow added to chat",
       description: `${flow.name} is ready to use in code.`,
     })
+    trackPaddieStudioEvent("workflow_attached", {
+      status: "success",
+      email: auth.user()?.email,
+      userID: auth.user()?.userId,
+      tenantID: auth.user()?.tenantId,
+      workflowID: flow.id,
+      workflowName: flow.name,
+      metadata: {
+        status: flow.status,
+        nodes: flow.nodes.length,
+        edges: flow.edges.length,
+        language: codegen.language,
+      },
+    })
   }
 
   const create = async () => {
@@ -498,6 +592,7 @@ export function TemplatePanel(props: {
         title: "Templates need the desktop app",
         description: "Create-from-template is only available in the desktop build.",
       })
+      trackTemplate("template_create_failed", "failure", cur, undefined, "Create-from-template is only available in the desktop build.")
       return
     }
 
@@ -512,14 +607,20 @@ export function TemplatePanel(props: {
     const name = raw?.trim()
     if (!name) return
 
+    trackTemplate("template_create_started", "attempt", cur, {
+      projectName: name,
+      files: cur.files.length,
+    })
     const next = await fs
       .create({ parent: root, name: slug(name), files: materialize(cur, name) })
       .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err)
         showToast({
           variant: "error",
           title: "Could not create project",
-          description: err instanceof Error ? err.message : String(err),
+          description: message,
         })
+        trackTemplate("template_create_failed", "failure", cur, { projectName: name }, message)
         return
       })
     if (!next) return
@@ -531,6 +632,9 @@ export function TemplatePanel(props: {
       title: "Project created",
       description: next,
     })
+    trackTemplate("template_create_succeeded", "success", cur, {
+      projectName: name,
+    })
   }
 
   const loadPick = async () => {
@@ -540,6 +644,10 @@ export function TemplatePanel(props: {
     if (cached) {
       setDoc(cached)
       setPick(true)
+      trackTemplate("template_picker_loaded", "success", cur, {
+        source: "cache",
+        bytes: cached.length,
+      })
       return
     }
     const link = previewUrl(cur)
@@ -561,18 +669,25 @@ export function TemplatePanel(props: {
           title: "Could not load template picker",
           description: "No preview document was available for this template.",
         })
+        trackTemplate("template_picker_failed", "failure", cur, undefined, "No preview document was available for this template.")
         return
       }
       const value = previewDoc(link, next, cur.parts)
       setDocCache((prev) => ({ ...prev, [cur.id]: value }))
       setDoc(value)
       setPick(true)
+      trackTemplate("template_picker_loaded", "success", cur, {
+        source: hasPreviewHtml ? "preview" : link ? "preview_url" : "inline",
+        bytes: value.length,
+      })
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
       showToast({
         variant: "error",
         title: "Could not load template picker",
-        description: err instanceof Error ? err.message : String(err),
+        description: message,
       })
+      trackTemplate("template_picker_failed", "failure", cur, undefined, message)
     } finally {
       setWait(false)
     }

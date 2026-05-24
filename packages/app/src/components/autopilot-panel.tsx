@@ -112,6 +112,7 @@ export function AutopilotPanel(props: {
   const [submitting, setSubmitting] = createSignal(false)
   const [view, setView] = createSignal<"plan" | "activity">("plan")
   const [selectedEventID, setSelectedEventID] = createSignal<string>()
+  const [clock, setClock] = createSignal(Date.now())
   const [targetWorkspaces, setTargetWorkspaces] = createSignal<string[]>([sdk.directory])
   const [store, setStore] = persisted(
     Persist.workspace(sdk.directory, "autopilot", ["autopilot.native.v1"]),
@@ -233,6 +234,19 @@ export function AutopilotPanel(props: {
     (run()?.events ?? []).filter(isActivityEvent).sort((a, b) => Date.parse(a.at) - Date.parse(b.at)),
   )
   const latestEvent = createMemo(() => activityEvents().at(-1) ?? run()?.events.at(-1))
+  const activityProgress = createMemo(() => {
+    const events = activityEvents()
+    const latest = latestEvent()
+    const complete = events.filter(
+      (event) => !isErrorEvent(event) && !(run()?.status === "running" && latest?.id === event.id),
+    ).length
+    const total = events.length
+    return {
+      complete,
+      total,
+      percent: total === 0 ? 0 : Math.round((complete / total) * 100),
+    }
+  })
   const selectedEvent = createMemo(() => activityEvents().find((event) => event.id === selectedEventID()))
   const latestErrorEvent = createMemo(() => activityEvents().slice().reverse().find(isErrorEvent))
   const detailEvent = createMemo(() => selectedEvent() ?? latestErrorEvent() ?? activityEvents().at(-1))
@@ -322,6 +336,13 @@ export function AutopilotPanel(props: {
     const id = selectedEventID()
     if (!id || activityEvents().some((event) => event.id === id)) return
     setSelectedEventID(undefined)
+  })
+
+  createEffect(() => {
+    const current = run()
+    if (!current || current.status === "completed" || current.status === "stopped") return
+    const timer = window.setInterval(() => setClock(Date.now()), 1_000)
+    onCleanup(() => window.clearInterval(timer))
   })
 
   createEffect(() => {
@@ -1044,26 +1065,31 @@ export function AutopilotPanel(props: {
   }
 
   const activityEventClass = (event: AutopilotEvent) => {
-    if (isErrorEvent(event)) return "border-red-500/35 bg-red-500/[0.05] hover:bg-red-500/[0.08]"
+    if (isErrorEvent(event)) return "border-red-500/35 bg-red-500/[0.06] hover:bg-red-500/[0.1]"
+    if (run()?.status === "running" && latestEvent()?.id === event.id) {
+      return "border-blue-500/40 bg-blue-500/[0.07] shadow-[0_0_0_1px_rgba(59,130,246,0.08),0_18px_50px_rgba(59,130,246,0.08)]"
+    }
     if (event.source === "browser") return "border-green-500/25 bg-green-500/[0.04] hover:bg-green-500/[0.07]"
     if (event.source === "template" || event.source === "workflow") {
       return "border-yellow-500/25 bg-yellow-500/[0.04] hover:bg-yellow-500/[0.07]"
     }
-    return "border-border-weaker-base bg-background-stronger hover:bg-surface-base-hover"
+    return "border-border-weaker-base bg-background-stronger/80 hover:bg-surface-base-hover"
   }
 
   const activityEventDotClass = (event: AutopilotEvent) => {
-    if (isErrorEvent(event)) return "border-red-500/35 bg-red-500/15 text-red-300"
-    if (event.source === "browser") return "border-green-500/25 bg-green-500/15 text-green-300"
-    if (event.source === "template" || event.source === "workflow") return "border-yellow-500/25 bg-yellow-500/15 text-yellow-300"
-    return "border-blue-500/25 bg-blue-500/15 text-blue-300"
+    if (isErrorEvent(event)) return "border-red-500/45 bg-red-500/15 text-red-300"
+    if (run()?.status === "running" && latestEvent()?.id === event.id) {
+      return "border-blue-400/50 bg-blue-500/20 text-blue-200 shadow-[0_0_0_4px_rgba(59,130,246,0.12)]"
+    }
+    return "border-green-500/40 bg-green-500/20 text-green-200"
   }
 
   const activityEventMark = (event: AutopilotEvent) => {
-    if (isErrorEvent(event)) return "!"
-    if (event.source === "browser") return <Icon name="window-cursor" class="size-3.5" />
-    if (event.title.includes("Patch")) return <Icon name="check-small" class="size-3.5" />
-    return "."
+    if (isErrorEvent(event)) return <Icon name="warning" class="size-3.5" />
+    if (run()?.status === "running" && latestEvent()?.id === event.id) {
+      return <span class="size-2.5 animate-pulse rounded-full bg-current" />
+    }
+    return <Icon name="check-small" class="size-4" />
   }
 
   const formatEventTime = (value: string) =>
@@ -1072,6 +1098,40 @@ export function AutopilotPanel(props: {
       minute: "2-digit",
       second: "2-digit",
     })
+
+  const formatElapsed = () => {
+    const current = run()
+    if (!current) return "00:00"
+    const end = current.status === "running" || current.status === "paused" ? clock() : Date.parse(current.updatedAt)
+    const seconds = Math.max(0, Math.floor((end - Date.parse(current.createdAt)) / 1_000))
+    const minutes = Math.floor(seconds / 60)
+    const hours = Math.floor(minutes / 60)
+    if (hours > 0) {
+      return `${hours.toString().padStart(2, "0")}:${(minutes % 60).toString().padStart(2, "0")}:${(seconds % 60)
+        .toString()
+        .padStart(2, "0")}`
+    }
+    return `${minutes.toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`
+  }
+
+  const activityEventStateLabel = (event: AutopilotEvent) => {
+    if (isErrorEvent(event)) return "blocked"
+    if (run()?.status === "running" && latestEvent()?.id === event.id) return "live"
+    return "done"
+  }
+
+  const activityEventSourceClass = (source: AutopilotEvent["source"]) => {
+    if (source === "opencode") return "border-blue-500/25 bg-blue-500/10 text-blue-300"
+    if (source === "browser") return "border-green-500/25 bg-green-500/10 text-green-300"
+    if (source === "template" || source === "workflow") return "border-yellow-500/25 bg-yellow-500/10 text-yellow-300"
+    if (source === "paddie") return "border-cyan-500/25 bg-cyan-500/10 text-cyan-300"
+    return "border-purple-500/25 bg-purple-500/10 text-purple-300"
+  }
+
+  const activityEventSnippet = (event: AutopilotEvent) => {
+    if (!event.detail || event.detail === event.body) return
+    return event.detail.length > 320 ? `${event.detail.slice(0, 320)}...` : event.detail
+  }
 
   const selectedTargets = createMemo(() => normalizeAutopilotWorkspaces(sdk.directory, targetWorkspaces()))
 
@@ -1421,38 +1481,46 @@ export function AutopilotPanel(props: {
   )
 
   const LiveRunStatus = () => (
-    <div class="grid gap-3 lg:grid-cols-3">
-      <div class="rounded-[16px] border border-border-weaker-base bg-surface-base p-4">
-        <div class="flex items-center gap-2">
-          <span class={`size-2 rounded-full ${statusDotClass()}`} />
-          <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Run status</div>
-        </div>
-        <div class="mt-2 text-15-bold text-text-base">{run()?.status ?? "idle"}</div>
-        <div class="mt-1 line-clamp-2 text-12-medium leading-5 text-text-weak">{status()}</div>
-      </div>
-      <div class="rounded-[16px] border border-border-weaker-base bg-surface-base p-4">
-        <div class="flex items-center gap-2">
-          <span
-            class={`size-2 rounded-full ${
-              workerStatus() === "busy" ? "animate-pulse bg-blue-400" : workerStatus() === "retry" ? "bg-yellow-400" : "bg-icon-success-base"
-            }`}
-          />
-          <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Worker</div>
-        </div>
-        <div class="mt-2 flex items-center justify-between gap-3">
-          <div class="min-w-0">
-            <div class="truncate text-15-bold text-text-base">{workerStatusText()}</div>
-            <div class="mt-1 truncate text-12-medium text-text-weak">{workerSessionID() ?? "No worker session yet"}</div>
+    <div class="rounded-[20px] border border-border-weaker-base bg-[linear-gradient(135deg,rgba(17,24,39,0.94),rgba(7,10,18,0.96))] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+      <div class="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <div class="rounded-[16px] border border-border-weaker-base bg-background-base/55 p-4">
+          <div class="flex items-center gap-2">
+            <span class={`size-2.5 rounded-full ${statusDotClass()}`} />
+            <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Run status</div>
           </div>
-          <Button variant="ghost" class="h-8 shrink-0 px-3 text-11-medium" disabled={!workerSessionID()} onClick={() => openWorkerSession()}>
-            Open
-          </Button>
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <div class="text-18-bold text-text-base">{run()?.status ?? "idle"}</div>
+            <span class={`rounded-full border px-2 py-0.5 text-10-medium ${runStatusClass()}`}>{formatElapsed()}</span>
+          </div>
+          <div class="mt-2 line-clamp-2 text-12-medium leading-5 text-text-weak">{status()}</div>
         </div>
-      </div>
-      <div class="rounded-[16px] border border-border-weaker-base bg-surface-base p-4">
-        <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Now</div>
-        <div class="mt-2 truncate text-15-bold text-text-base">{taskProgress().active?.title ?? activeStep()?.title ?? "Waiting"}</div>
-        <div class="mt-1 line-clamp-2 text-12-medium leading-5 text-text-weak">{liveStatusLine()}</div>
+        <div class="rounded-[16px] border border-border-weaker-base bg-background-base/55 p-4">
+          <div class="flex items-center gap-2">
+            <span
+              class={`size-2.5 rounded-full ${
+                workerStatus() === "busy" ? "animate-pulse bg-blue-400" : workerStatus() === "retry" ? "bg-yellow-400" : "bg-icon-success-base"
+              }`}
+            />
+            <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Worker</div>
+          </div>
+          <div class="mt-2 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="truncate text-15-bold text-text-base">{workerStatusText()}</div>
+              <div class="mt-1 truncate text-12-medium text-text-weak">{workerSessionID() ?? "No worker session yet"}</div>
+            </div>
+            <Button variant="ghost" class="h-8 shrink-0 px-3 text-11-medium" disabled={!workerSessionID()} onClick={() => openWorkerSession()}>
+              Open
+            </Button>
+          </div>
+        </div>
+        <div class="rounded-[16px] border border-border-weaker-base bg-background-base/55 p-4">
+          <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Now</div>
+          <div class="mt-2 truncate text-15-bold text-text-base">{taskProgress().active?.title ?? activeStep()?.title ?? "Waiting"}</div>
+          <div class="mt-2 line-clamp-2 text-12-medium leading-5 text-text-weak">{liveStatusLine()}</div>
+          <Show when={previewUrl()}>
+            {(url) => <div class="mt-2 truncate text-11-medium text-green-300">{url()}</div>}
+          </Show>
+        </div>
       </div>
     </div>
   )
@@ -1525,67 +1593,97 @@ export function AutopilotPanel(props: {
   )
 
   const ActivityTimeline = () => (
-    <div class="rounded-[18px] border border-border-weaker-base bg-surface-base">
-      <div class="flex items-center gap-4 border-b border-border-weaker-base px-4 py-3">
-        <div class="min-w-0 flex-1 text-14-bold text-text-base">Activity timeline</div>
+    <div class="overflow-hidden rounded-[20px] border border-border-weaker-base bg-surface-base shadow-[0_18px_70px_rgba(0,0,0,0.18)]">
+      <div class="flex flex-wrap items-center gap-4 border-b border-border-weaker-base bg-background-stronger/70 px-5 py-4">
+        <div class="min-w-0 flex-1">
+          <div class="text-15-bold text-text-base">Activity timeline</div>
+          <div class="mt-1 truncate text-11-medium text-text-weak">{latestEvent()?.title ?? "Waiting for the first live event"}</div>
+        </div>
         <Show when={run()}>
           <div class="flex shrink-0 items-center gap-3 text-11-medium text-text-weak">
             <span>
-              {progress().complete} of {progress().total} steps
+              {activityProgress().complete} of {activityProgress().total} events
             </span>
-            <div class="h-1.5 w-28 overflow-hidden rounded-full bg-background-stronger">
-              <div class="h-full rounded-full bg-blue-500 transition-[width] duration-500" style={{ width: `${progress().percent}%` }} />
+            <div class="h-2 w-32 overflow-hidden rounded-full bg-background-base">
+              <div class="h-full rounded-full bg-blue-500 transition-[width] duration-500" style={{ width: `${activityProgress().percent}%` }} />
             </div>
-            <span class="text-text-base">{progress().percent}%</span>
+            <span class="w-9 text-right text-text-base">{activityProgress().percent}%</span>
           </div>
         </Show>
       </div>
-      <div class="max-h-[620px] overflow-auto p-4">
+      <div class="max-h-[700px] overflow-auto px-5 py-4">
         <Show
           when={activityEvents().length > 0}
           fallback={
-            <div class="rounded-[16px] border border-dashed border-border-weaker-base bg-background-stronger px-4 py-16 text-center text-13-medium text-text-weak">
-              Live activity appears here after the native worker starts.
+            <div class="flex min-h-[300px] flex-col items-center justify-center rounded-[16px] border border-dashed border-border-weaker-base bg-background-stronger px-4 py-16 text-center">
+              <div class="flex size-12 items-center justify-center rounded-full border border-border-weaker-base bg-surface-base text-icon-info-base">
+                <Icon name="checklist" class="size-5" />
+              </div>
+              <div class="mt-3 text-13-bold text-text-base">Activity appears once the run starts.</div>
+              <div class="mt-1 max-w-[300px] text-12-medium leading-5 text-text-weak">
+                The run will switch from plan setup to live worker events, command output, patches, and verification status.
+              </div>
             </div>
           }
         >
-          <div class="relative grid gap-3 before:absolute before:bottom-4 before:left-[17px] before:top-4 before:w-px before:bg-border-weaker-base">
+          <div class="relative grid gap-2 before:absolute before:bottom-8 before:left-[18px] before:top-8 before:w-px before:bg-gradient-to-b before:from-green-500/70 before:via-border-weaker-base before:to-border-weaker-base">
             <For each={activityEvents()}>
               {(event, index) => (
                 <button
                   type="button"
-                  class={`relative w-full rounded-[16px] border p-4 text-left transition-colors ${
-                    selectedEventID() === event.id ? "border-blue-500/45 bg-blue-500/[0.06]" : activityEventClass(event)
+                  class={`group relative w-full rounded-[18px] border p-4 text-left transition-all duration-200 ${
+                    selectedEventID() === event.id
+                      ? "border-blue-500/55 bg-blue-500/[0.08] shadow-[0_0_0_1px_rgba(59,130,246,0.14)]"
+                      : activityEventClass(event)
                   }`}
                   onClick={() => setSelectedEventID(event.id)}
                 >
                   <div class="flex items-start gap-3">
                     <div
-                      class={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border text-12-bold ${activityEventDotClass(event)}`}
+                      class={`relative z-[1] mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full border text-12-bold transition-transform group-hover:scale-105 ${activityEventDotClass(
+                        event,
+                      )}`}
                     >
                       {activityEventMark(event)}
                     </div>
                     <div class="min-w-0 flex-1">
-                      <div class="flex flex-wrap items-center gap-2">
+                      <div class="flex flex-wrap items-center gap-2 pr-2">
                         <div class="min-w-0 truncate text-13-bold text-text-base">{event.title}</div>
-                        <span class="rounded-full border border-border-weaker-base px-2 py-0.5 text-10-medium text-text-weak">
+                        <span class={`rounded-full border px-2 py-0.5 text-10-medium ${activityEventSourceClass(event.source)}`}>
                           {eventSourceLabel(event.source)}
                         </span>
-                        <Show when={latestEvent()?.id === event.id && run()?.status === "running"}>
-                          <span class="inline-flex items-center gap-1 rounded-full border border-green-500/25 bg-green-500/10 px-2 py-0.5 text-10-medium text-green-300">
-                            <span class="size-1.5 animate-pulse rounded-full bg-green-400" />
-                            live
-                          </span>
-                        </Show>
+                        <span
+                          class={`rounded-full border px-2 py-0.5 text-10-medium ${
+                            activityEventStateLabel(event) === "blocked"
+                              ? "border-red-500/30 bg-red-500/10 text-red-300"
+                              : activityEventStateLabel(event) === "live"
+                                ? "border-blue-500/30 bg-blue-500/10 text-blue-300"
+                                : "border-green-500/30 bg-green-500/10 text-green-300"
+                          }`}
+                        >
+                          {activityEventStateLabel(event)}
+                        </span>
+                        <span class="rounded-full border border-border-weaker-base bg-background-base px-2 py-0.5 text-10-medium text-text-weak">
+                          Event {index() + 1} of {activityEvents().length}
+                        </span>
                       </div>
                       <div class="mt-1 line-clamp-3 text-12-medium leading-5 text-text-weak">{event.body}</div>
+                      <Show when={activityEventSnippet(event)}>
+                        {(snippet) => (
+                          <pre class="mt-3 max-h-24 overflow-hidden whitespace-pre-wrap rounded-[12px] border border-border-weaker-base bg-background-base/80 px-3 py-2 font-mono text-10-medium leading-4 text-text-base">
+                            {snippet()}
+                          </pre>
+                        )}
+                      </Show>
                       <div class="mt-3 flex flex-wrap items-center gap-2 text-10-medium text-text-weak">
-                        <span>Task: {taskProgress().active?.title ?? "Complete"}</span>
-                        <span>-</span>
-                        <span>Step: {activeStep()?.title ?? "Complete"}</span>
+                        <span class="truncate">Task: {taskProgress().active?.title ?? "Complete"}</span>
+                        <span class="text-border-strong-base">/</span>
+                        <span class="truncate">Phase: {activeStep()?.title ?? "Complete"}</span>
                       </div>
                     </div>
-                    <div class="shrink-0 text-11-medium text-text-weak">{formatEventTime(event.at)}</div>
+                    <div class="shrink-0 rounded-full border border-border-weaker-base bg-background-base px-2 py-1 text-10-medium text-text-weak">
+                      {formatEventTime(event.at)}
+                    </div>
                   </div>
                 </button>
               )}
@@ -1600,7 +1698,7 @@ export function AutopilotPanel(props: {
     <div class="grid gap-3">
       <Show when={handoffSummary()}>
         {(summary) => (
-          <div class="rounded-[18px] border border-green-500/25 bg-green-500/[0.04] p-4">
+          <div class="rounded-[18px] border border-green-500/25 bg-green-500/[0.05] p-4 shadow-[0_16px_50px_rgba(34,197,94,0.08)]">
             <div class="flex items-center gap-2">
               <span class="flex size-7 items-center justify-center rounded-full border border-green-500/30 bg-green-500/10 text-green-300">
                 <Icon name="check-small" class="size-4" />
@@ -1614,8 +1712,11 @@ export function AutopilotPanel(props: {
           </div>
         )}
       </Show>
-      <div class="rounded-[18px] border border-border-weaker-base bg-surface-base p-4">
-        <div class="text-14-bold text-text-base">Run details</div>
+      <div class="rounded-[18px] border border-border-weaker-base bg-[linear-gradient(180deg,rgba(18,24,38,0.92),rgba(12,15,22,0.96))] p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div class="text-14-bold text-text-base">Run details</div>
+          <span class={`rounded-full border px-2 py-1 text-10-medium ${runStatusClass()}`}>{run()?.status ?? "idle"}</span>
+        </div>
         <div class="mt-4 grid gap-3 text-12-medium text-text-weak">
           <div class="flex items-center justify-between gap-3">
             <span>Agent</span>
@@ -1668,14 +1769,43 @@ export function AutopilotPanel(props: {
                   <span>Started</span>
                   <span class="min-w-0 truncate text-text-base">{new Date(current().createdAt).toLocaleString()}</span>
                 </div>
+                <div class="flex items-center justify-between gap-3">
+                  <span>Elapsed</span>
+                  <span class="min-w-0 truncate text-text-base">{formatElapsed()}</span>
+                </div>
               </>
             )}
           </Show>
         </div>
       </div>
+      <div class="rounded-[18px] border border-border-weaker-base bg-surface-base p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div class="text-14-bold text-text-base">Task progress</div>
+          <span class="rounded-full border border-border-weaker-base px-2 py-1 text-10-medium text-text-weak">
+            {taskProgress().complete} / {taskProgress().total}
+          </span>
+        </div>
+        <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-background-stronger">
+          <div class="h-full rounded-full bg-blue-500 transition-[width] duration-500" style={{ width: `${taskProgress().percent}%` }} />
+        </div>
+        <div class="mt-3 grid gap-2">
+          <For each={taskItems().slice(0, 5)}>
+            {(task, index) => (
+              <div class="flex items-center gap-2 rounded-[12px] border border-border-weaker-base bg-background-stronger px-3 py-2">
+                <span class={`size-2 rounded-full ${taskStatusDotClass(task.status)}`} />
+                <span class="w-4 shrink-0 text-10-bold text-text-weak">{index() + 1}</span>
+                <span class="min-w-0 flex-1 truncate text-11-bold text-text-base">{task.title}</span>
+                <span class={`rounded-full border px-2 py-0.5 text-10-medium ${taskStatusClass(task.status)}`}>
+                  {taskStatusLabel(task.status)}
+                </span>
+              </div>
+            )}
+          </For>
+        </div>
+      </div>
       <div
         class={`rounded-[18px] border p-4 ${
-          detailEvent() && isErrorEvent(detailEvent()!) ? "border-red-500/30 bg-red-500/[0.04]" : "border-border-weaker-base bg-surface-base"
+          detailEvent() && isErrorEvent(detailEvent()!) ? "border-red-500/35 bg-red-500/[0.05]" : "border-border-weaker-base bg-surface-base"
         }`}
       >
         <div class="flex items-center justify-between gap-3">
@@ -1691,8 +1821,21 @@ export function AutopilotPanel(props: {
         <Show when={detailEvent()}>
           {(event) => (
             <div class="mt-2">
-              <div class="text-12-bold text-text-base">{event().title}</div>
-              <div class="mt-1 text-11-medium text-text-weak">{eventSourceLabel(event().source)}</div>
+              <div class="flex flex-wrap items-center gap-2">
+                <div class="text-12-bold text-text-base">{event().title}</div>
+                <span class={`rounded-full border px-2 py-0.5 text-10-medium ${activityEventSourceClass(event().source)}`}>
+                  {eventSourceLabel(event().source)}
+                </span>
+                <span
+                  class={`rounded-full border px-2 py-0.5 text-10-medium ${
+                    isErrorEvent(event())
+                      ? "border-red-500/30 bg-red-500/10 text-red-300"
+                      : "border-green-500/30 bg-green-500/10 text-green-300"
+                  }`}
+                >
+                  {activityEventStateLabel(event())}
+                </span>
+              </div>
             </div>
           )}
         </Show>
@@ -1769,44 +1912,70 @@ export function AutopilotPanel(props: {
         }
       >
         <div class="flex min-h-full flex-col gap-4">
-          <div class="flex flex-wrap items-center justify-between gap-3 px-1">
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <div class="text-20-bold text-text-base">Autopilot run</div>
-                <Show when={run()}>
-                  {(current) => (
-                    <span class={`rounded-full border px-2 py-1 text-11-medium ${runStatusClass()}`}>
-                      {current().status}
-                    </span>
-                  )}
-                </Show>
-              </div>
-              <Show when={run()}>
-                {(current) => (
-                  <div class="mt-1 truncate text-12-medium text-text-weak">
-                    Started {new Date(current().createdAt).toLocaleString()} - Run ID: {current().runID}
+          <div class="rounded-[22px] border border-border-weaker-base bg-[linear-gradient(135deg,rgba(9,12,20,0.98),rgba(14,20,33,0.96))] px-5 py-4 shadow-[0_24px_80px_rgba(0,0,0,0.24)]">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="flex min-w-0 items-center gap-3">
+                <div class="flex size-12 shrink-0 items-center justify-center rounded-[16px] border border-blue-500/30 bg-blue-500/10 text-blue-300">
+                  <Icon name="checklist" class="size-5" />
+                </div>
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <div class="text-20-bold text-text-base">Autopilot run</div>
+                    <Show when={run()}>
+                      {(current) => (
+                        <span class={`rounded-full border px-2 py-1 text-11-medium ${runStatusClass()}`}>
+                          {current().status}
+                        </span>
+                      )}
+                    </Show>
                   </div>
-                )}
-              </Show>
+                  <Show when={run()}>
+                    {(current) => (
+                      <div class="mt-1 truncate text-12-medium text-text-weak">
+                        Started {new Date(current().createdAt).toLocaleString()} / Run ID: {current().runID}
+                      </div>
+                    )}
+                  </Show>
+                </div>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <Button variant="ghost" class="h-10 gap-2 px-3 text-12-medium" onClick={() => setView("plan")}>
+                  <Icon name="arrow-left" class="size-4" />
+                  Back to plan
+                </Button>
+                <Button
+                  variant="ghost"
+                  class="h-10 gap-2 border-red-500/25 px-3 text-12-medium text-red-300 hover:bg-red-500/10"
+                  disabled={!run() || run()?.status === "stopped" || run()?.status === "completed"}
+                  onClick={() => changeStatus("stopped")}
+                >
+                  <Icon name="stop" class="size-3.5" />
+                  Stop run
+                </Button>
+              </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <Button variant="ghost" class="h-9 px-3 text-12-medium" onClick={() => setView("plan")}>
-                Back to plan
-              </Button>
-              <Button
-                variant="ghost"
-                class="h-9 px-3 text-12-medium"
-                disabled={!run() || run()?.status === "stopped" || run()?.status === "completed"}
-                onClick={() => changeStatus("stopped")}
-              >
-                Stop run
-              </Button>
+            <div class="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_240px]">
+              <div class="min-w-0 rounded-[16px] border border-border-weaker-base bg-background-base/60 px-4 py-3">
+                <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Current objective</div>
+                <div class="mt-1 line-clamp-2 text-13-medium leading-6 text-text-base">{run()?.goal ?? goal()}</div>
+              </div>
+              <div class="rounded-[16px] border border-border-weaker-base bg-background-base/60 px-4 py-3">
+                <div class="flex items-center justify-between text-11-medium text-text-weak">
+                  <span>Plan progress</span>
+                  <span>{progress().percent}%</span>
+                </div>
+                <div class="mt-3 h-2 overflow-hidden rounded-full bg-background-base">
+                  <div class="h-full rounded-full bg-blue-500 transition-[width] duration-500" style={{ width: `${progress().percent}%` }} />
+                </div>
+                <div class="mt-2 text-11-medium text-text-weak">
+                  {progress().complete} of {progress().total} steps
+                </div>
+              </div>
             </div>
           </div>
           <RunSwitcher />
 
           <LiveRunStatus />
-          <TaskBreakdown compact />
 
           <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
             <ActivityTimeline />
