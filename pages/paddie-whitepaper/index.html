@@ -1,0 +1,1165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="A Paddie Studio whitepaper covering templates, Workflow Builder, Paddie Memory, Knowledge Base/RAG, native Autopilot, and the underlying technology architecture."
+    />
+    <meta property="og:title" content="Paddie Studio Whitepaper" />
+    <meta
+      property="og:description"
+      content="The product and technology behind Paddie Studio."
+    />
+    <meta property="og:type" content="website" />
+    <title>Paddie Studio Whitepaper</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,400&family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0c0a09;
+        --surface: #161311;
+        --surface-strong: #1d1814;
+        --line: #2a2520;
+        --ink: #f5f1ea;
+        --ink-dim: #b5aa9a;
+        --ink-mute: #776c60;
+        --accent: #ff7a3a;
+        --accent-soft: #ffb892;
+        --accent-deep: #9f3915;
+        --teal: #66d0bd;
+        --green: #6dd47e;
+        --red: #ff5547;
+        --display: "Fraunces", "Times New Roman", serif;
+        --body: "Inter Tight", system-ui, sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        color: var(--ink);
+        background:
+          linear-gradient(180deg, rgba(255, 122, 58, 0.09), transparent 320px),
+          repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 120px),
+          var(--bg);
+        font-family: var(--body);
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      body::before {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        content: "";
+        opacity: 0.35;
+        mix-blend-mode: screen;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 0.91  0 0 0 0 0.78  0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .page {
+        width: min(100%, 1440px);
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .shell {
+        border: 1px solid var(--line);
+        background: rgba(12, 10, 9, 0.78);
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        min-height: 72px;
+        padding: 16px 24px;
+        border-bottom: 1px solid var(--line);
+        backdrop-filter: blur(18px);
+        background: rgba(12, 10, 9, 0.88);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .mark {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        flex: 0 0 auto;
+        border: 1px solid var(--accent);
+        color: var(--accent-soft);
+        font-family: var(--display);
+        font-size: 18px;
+        background: #14100d;
+      }
+
+      .brand-text {
+        min-width: 0;
+      }
+
+      .brand-title,
+      .eyebrow,
+      .meta-label,
+      .tag,
+      .section-number,
+      .metric-label,
+      .button {
+        font-family: var(--mono);
+        letter-spacing: 0;
+      }
+
+      .brand-title {
+        color: var(--ink);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .brand-subtitle {
+        overflow: hidden;
+        color: var(--ink-mute);
+        font-size: 13px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .nav a,
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0 14px;
+        border: 1px solid var(--line);
+        color: var(--ink-dim);
+        font-size: 12px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .nav a:hover,
+      .button:hover {
+        border-color: rgba(255, 122, 58, 0.55);
+        color: var(--ink);
+      }
+
+      .button-primary {
+        border-color: var(--accent);
+        color: #1a0f09;
+        background: var(--accent);
+        font-weight: 600;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.02fr) minmax(320px, 0.98fr);
+        gap: 32px;
+        align-items: center;
+        min-height: calc(100vh - 132px);
+        padding: 56px 24px 40px;
+      }
+
+      .hero-copy {
+        padding: 24px;
+      }
+
+      .eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 0 22px;
+        color: var(--accent);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .loop {
+        position: relative;
+        display: inline-block;
+        width: 24px;
+        height: 11px;
+        border: 1.5px solid var(--accent);
+        border-radius: 999px;
+      }
+
+      .loop::before,
+      .loop::after {
+        position: absolute;
+        top: -1.5px;
+        width: 11px;
+        height: 11px;
+        border: 1.5px solid var(--accent);
+        border-radius: 999px;
+        background: var(--bg);
+        content: "";
+      }
+
+      .loop::before {
+        left: -6px;
+      }
+
+      .loop::after {
+        right: -6px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 10ch;
+        margin-bottom: 24px;
+        font-family: var(--display);
+        font-size: clamp(54px, 8vw, 116px);
+        font-weight: 300;
+        line-height: 0.96;
+      }
+
+      h1 em,
+      h2 em {
+        color: var(--accent);
+        font-style: italic;
+        font-weight: 400;
+      }
+
+      .lead {
+        max-width: 64ch;
+        margin-bottom: 30px;
+        color: var(--ink-dim);
+        font-size: clamp(18px, 2vw, 24px);
+        line-height: 1.45;
+      }
+
+      .cta-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .media-frame {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background: #090807;
+        box-shadow: 0 32px 90px rgba(0, 0, 0, 0.42);
+      }
+
+      .media-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 13px 16px;
+        border-bottom: 1px solid var(--line);
+        color: var(--ink-mute);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      .window-dots {
+        display: flex;
+        gap: 7px;
+      }
+
+      .window-dots span {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+      }
+
+      .window-dots span:nth-child(1) {
+        background: var(--red);
+      }
+
+      .window-dots span:nth-child(2) {
+        background: var(--accent-soft);
+      }
+
+      .window-dots span:nth-child(3) {
+        background: var(--green);
+      }
+
+      video {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        background: #050403;
+        object-fit: cover;
+      }
+
+      .hero-meta {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        border-top: 1px solid var(--line);
+      }
+
+      .hero-meta > div {
+        min-width: 0;
+        padding: 18px;
+        border-right: 1px solid var(--line);
+      }
+
+      .hero-meta > div:last-child {
+        border-right: 0;
+      }
+
+      .meta-label {
+        margin-bottom: 6px;
+        color: var(--ink-mute);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+
+      .meta-value {
+        overflow-wrap: anywhere;
+        color: var(--ink);
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .section {
+        display: grid;
+        grid-template-columns: 210px minmax(0, 1fr);
+        gap: 28px;
+        padding: 72px 24px;
+        border-top: 1px solid var(--line);
+      }
+
+      .section-number {
+        position: sticky;
+        top: 104px;
+        align-self: start;
+        color: var(--accent);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .section-body {
+        min-width: 0;
+      }
+
+      h2 {
+        max-width: 15ch;
+        margin-bottom: 18px;
+        font-family: var(--display);
+        font-size: clamp(38px, 5vw, 74px);
+        font-weight: 400;
+        line-height: 1;
+      }
+
+      .section-intro {
+        max-width: 76ch;
+        margin-bottom: 28px;
+        color: var(--ink-dim);
+        font-size: 19px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      .grid-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .card,
+      .quote,
+      .timeline,
+      .diagram {
+        border: 1px solid var(--line);
+        background: rgba(22, 19, 17, 0.82);
+      }
+
+      .card {
+        padding: 22px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 26px;
+        margin-bottom: 18px;
+        padding: 0 10px;
+        border: 1px solid rgba(255, 122, 58, 0.48);
+        color: var(--accent-soft);
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+
+      h3 {
+        margin-bottom: 12px;
+        color: var(--ink);
+        font-size: 24px;
+        line-height: 1.15;
+      }
+
+      .card p,
+      .diagram p,
+      .quote p,
+      .timeline p {
+        margin-bottom: 0;
+        color: var(--ink-dim);
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background: var(--line);
+      }
+
+      .metric {
+        min-width: 0;
+        padding: 24px;
+        background: var(--surface);
+      }
+
+      .metric-value {
+        margin-bottom: 8px;
+        color: var(--ink);
+        font-family: var(--display);
+        font-size: clamp(34px, 5vw, 64px);
+        line-height: 1;
+      }
+
+      .metric-label {
+        color: var(--ink-mute);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .timeline {
+        padding: 8px 0;
+      }
+
+      .timeline-item {
+        display: grid;
+        grid-template-columns: 150px minmax(0, 1fr);
+        gap: 22px;
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .timeline-item:last-child {
+        border-bottom: 0;
+      }
+
+      .timeline-date {
+        color: var(--accent);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .timeline h3 {
+        margin-bottom: 6px;
+        font-size: 20px;
+      }
+
+      .diagram {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 1px;
+        overflow: hidden;
+        background: var(--line);
+      }
+
+      .diagram-step {
+        min-height: 150px;
+        padding: 18px;
+        background: linear-gradient(180deg, rgba(255, 122, 58, 0.07), transparent 70%), var(--surface);
+      }
+
+      .diagram-step strong {
+        display: block;
+        margin-bottom: 10px;
+        color: var(--ink);
+        font-size: 17px;
+      }
+
+      .diagram-step span {
+        color: var(--ink-dim);
+        font-size: 14px;
+      }
+
+      .quote {
+        padding: 34px;
+        border-color: rgba(255, 122, 58, 0.45);
+        background:
+          linear-gradient(90deg, rgba(255, 122, 58, 0.12), transparent),
+          var(--surface-strong);
+      }
+
+      .quote p {
+        color: var(--ink);
+        font-family: var(--display);
+        font-size: clamp(28px, 4vw, 54px);
+        line-height: 1.08;
+      }
+
+      .download-panel {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1.1fr);
+        gap: 1px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background: var(--line);
+      }
+
+      .download-copy,
+      .install-guide {
+        min-width: 0;
+        padding: 28px;
+        background: var(--surface);
+      }
+
+      .download-copy {
+        background:
+          radial-gradient(circle at 80% 20%, rgba(255, 122, 58, 0.16), transparent 36%),
+          var(--surface-strong);
+      }
+
+      .download-copy h3 {
+        max-width: 14ch;
+        font-family: var(--display);
+        font-size: clamp(34px, 4vw, 58px);
+        font-weight: 400;
+      }
+
+      .steps {
+        display: grid;
+        gap: 14px;
+        margin-top: 22px;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr);
+        gap: 14px;
+        align-items: start;
+        padding: 14px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .step-number {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border: 1px solid rgba(255, 122, 58, 0.58);
+        color: var(--accent-soft);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .step strong {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--ink);
+      }
+
+      .step span {
+        color: var(--ink-dim);
+      }
+
+      .trust-note {
+        margin-top: 18px;
+        padding: 16px;
+        border: 1px solid rgba(255, 184, 146, 0.3);
+        color: var(--ink-dim);
+        background: rgba(255, 122, 58, 0.06);
+        font-size: 14px;
+      }
+
+      .footer {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+        padding: 32px 24px;
+        border-top: 1px solid var(--line);
+        color: var(--ink-mute);
+        font-size: 13px;
+      }
+
+      .footer a {
+        color: var(--ink-dim);
+      }
+
+      @media (max-width: 980px) {
+        .hero,
+        .section {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          min-height: auto;
+        }
+
+        .section-number {
+          position: static;
+        }
+
+        .grid-2,
+        .grid-3,
+        .metrics,
+        .diagram,
+        .download-panel {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .page {
+          padding: 0;
+        }
+
+        .topbar {
+          position: static;
+          align-items: flex-start;
+          flex-direction: column;
+          padding: 18px;
+        }
+
+        .nav {
+          justify-content: flex-start;
+          width: 100%;
+        }
+
+        .nav a,
+        .button {
+          flex: 1 1 auto;
+        }
+
+        .hero,
+        .section {
+          padding: 42px 18px;
+        }
+
+        .hero-copy {
+          padding: 0;
+        }
+
+        .hero-meta {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-meta > div {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .hero-meta > div:last-child {
+          border-bottom: 0;
+        }
+
+        .timeline-item {
+          grid-template-columns: 1fr;
+          gap: 8px;
+          padding: 18px;
+        }
+
+        .footer {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <main class="shell">
+        <header class="topbar">
+          <a class="brand" href="#top" aria-label="Paddie Studio whitepaper home">
+            <span class="mark">dd</span>
+            <span class="brand-text">
+              <span class="brand-title">Paddie Studio</span>
+              <span class="brand-subtitle">Whitepaper / features and technology</span>
+            </span>
+          </a>
+          <nav class="nav" aria-label="Whitepaper sections">
+            <a href="#features">Features</a>
+            <a href="#studio-systems">Studio systems</a>
+            <a href="#technology">Technology</a>
+            <a href="#autopilot">Autopilot</a>
+            <a href="#download">Download</a>
+            <a href="#safety">Safety</a>
+          </nav>
+        </header>
+
+        <section class="hero" id="top">
+          <div class="hero-copy">
+            <p class="eyebrow"><span class="loop" aria-hidden="true"></span> Paddie Whitepaper / 2026</p>
+            <h1>Paddie Studio, the <em>visual AI</em> development workspace.</h1>
+            <p class="lead">
+              Paddie Studio brings chat-based coding, visual templates, website inspiration, workflow generation,
+              agentic memory/RAG, project previews, and autonomous implementation into one desktop workspace built on
+              opencode.
+            </p>
+            <div class="cta-row">
+              <a class="button button-primary" href="#whitepaper">Read the whitepaper</a>
+              <a
+                class="button"
+                href="https://github.com/michaelegbo/paddie-studio-ui-coder/releases/download/v1.4.72-beta.1/PaddieStudioBeta_1.4.72-beta.1_x64-setup.exe"
+                >Download beta</a
+              >
+              <a class="button" href="https://github.com/michaelegbo/paddie-studio-ui-coder">View repository</a>
+            </div>
+          </div>
+
+          <div class="media-frame" aria-label="Paddie Studio video">
+            <div class="media-top">
+              <span class="window-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+              <span>main-paddie-ad.mp4</span>
+            </div>
+            <video controls muted playsinline preload="metadata">
+              <source src="./assets/main-paddie-ad.mp4" type="video/mp4" />
+              Your browser does not support the video tag.
+            </video>
+            <div class="hero-meta">
+              <div>
+                <div class="meta-label">Core runtime</div>
+                <div class="meta-value">opencode</div>
+              </div>
+              <div>
+                <div class="meta-label">Desktop shell</div>
+                <div class="meta-value">Tauri</div>
+              </div>
+              <div>
+                <div class="meta-label">Studio layer</div>
+                <div class="meta-value">Paddie</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="whitepaper">
+          <div class="section-number">01 / Executive summary</div>
+          <div class="section-body">
+            <h2>What Paddie Studio is built to do.</h2>
+            <p class="section-intro">
+              Paddie Studio is a desktop product for building software with AI while keeping the work visible. It
+              combines the proven opencode agentic coding engine with Paddie-owned Studio tools for templates and
+              inspiration, plus Workflow Builder systems for Paddie Memory, Knowledge Base/RAG, generated clients,
+              previews, and native Autopilot orchestration.
+            </p>
+            <div class="metrics">
+              <div class="metric">
+                <div class="metric-value">AI</div>
+                <div class="metric-label">connected models</div>
+              </div>
+              <div class="metric">
+                <div class="metric-value">UI</div>
+                <div class="metric-label">templates and inspiration</div>
+              </div>
+              <div class="metric">
+                <div class="metric-value">Flow</div>
+                <div class="metric-label">workflow to code</div>
+              </div>
+              <div class="metric">
+                <div class="metric-value">RAG</div>
+                <div class="metric-label">agentic memory layer</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="features">
+          <div class="section-number">02 / Product features</div>
+          <div class="section-body">
+            <h2>The studio becomes the control room.</h2>
+            <p class="section-intro">
+              The main product idea is simple: keep the coding agent, the project, the design reference, the workflow,
+              and the preview in the same place. Users can move between normal chat, Studio tools, and Autopilot runs
+              without losing the workspace context.
+            </p>
+            <div class="grid grid-3">
+              <article class="card">
+                <span class="tag">Paddie Chat</span>
+                <h3>AI coding stays familiar.</h3>
+                <p>
+                  Normal chat and code-builder flows remain powered by opencode. Paddie adds context and Studio tools
+                  around that flow instead of replacing the core chat experience.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Templates</span>
+                <h3>Design references become build context.</h3>
+                <p>
+                  The Studio template system turns polished UI starters into previewable, attachable implementation
+                  references. Paddie can use the full template or selected parts as high-fidelity design context.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Inspiration</span>
+                <h3>Public websites become design signals.</h3>
+                <p>
+                  Public pages can be captured as sanitized references for layout, hierarchy, color, typography, and
+                  motion intent without copying private assets or authenticated content.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Workflow Builder</span>
+                <h3>Saved flows become code integrations.</h3>
+                <p>
+                  Saved flows, graph structure, Memory/RAG nodes, orchestrators, and generated client code can be
+                  attached to coding tasks so the app can wire product logic without manually rebuilding the flow.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Paddie Memory</span>
+                <h3>Agents get durable context.</h3>
+                <p>
+                  Inside Workflow Builder, Paddie Memory adds agentic memory for preferences, conversation history,
+                  knowledge graph relationships, long-term context, and contextual retrieval across sessions.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Preview</span>
+                <h3>Output is checked where it runs.</h3>
+                <p>
+                  Paddie can detect local project previews, inspect browser output, surface errors, and feed failures
+                  back into the build loop.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Autopilot</span>
+                <h3>Complex tasks become managed runs.</h3>
+                <p>
+                  Autopilot plans work, breaks goals into tasks, coordinates scoped opencode worker sessions, verifies
+                  output, and hands results back to the user.
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="studio-systems">
+          <div class="section-number">03 / Paddie systems</div>
+          <div class="section-body">
+            <h2>Templates build UI. Workflows build agents.</h2>
+            <p class="section-intro">
+              Paddie has two complementary creation systems. Studio templates and inspiration help users build
+              beautiful UI. Workflow Builder helps users build AI agents and automations with Paddie Memory,
+              Knowledge Base/RAG, harnesses, skills, orchestrators, tools, and generated code clients.
+            </p>
+            <div class="grid grid-3">
+              <article class="card">
+                <span class="tag">Template catalog</span>
+                <h3>From inspiration to implementation.</h3>
+                <p>
+                  Templates give Paddie a concrete UI target instead of a vague style request. A user can browse their
+                  catalog, preview the UI, open a template, attach the full design, or select a specific section. The
+                  AI receives the important files, visible structure, selected part, and design intent as scoped
+                  context.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Cross-stack design</span>
+                <h3>Style is portable across projects.</h3>
+                <p>
+                  The template does not have to match the current app stack exactly. Paddie treats it as a design and
+                  interaction reference, so a React template can guide an Angular, Vite, or existing custom project
+                  while preserving layout, hierarchy, spacing, color, and motion intent.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Template selection</span>
+                <h3>Autopilot can choose for the task.</h3>
+                <p>
+                  When the user asks for a dashboard, landing page, app shell, or other UI direction, Autopilot can
+                  inspect the available template catalog, choose the best fit, and pass that choice into the scoped
+                  opencode worker session for implementation.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Workflow Builder</span>
+                <h3>Flows carry agent and product logic.</h3>
+                <p>
+                  Workflows are not just diagrams. Paddie can combine AI model nodes, memory nodes, RAG retrieval,
+                  webhooks, conditions, loops, HTTP calls, skills, and AI orchestrators into runnable agent workflows.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Code export</span>
+                <h3>The graph can ship into real apps.</h3>
+                <p>
+                  A saved workflow can be exported or invoked as code, so teams can use the generated client directly
+                  inside their applications while the workflow graph remains the source of truth for future updates.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Agentic memory</span>
+                <h3>Paddie Memory is a real agent memory layer.</h3>
+                <p>
+                  Paddie Memory is a production agentic memory layer for AI applications. It stores and retrieves user
+                  preferences, conversation history, long-term context, knowledge graph relationships, working memory,
+                  summaries, and procedural knowledge for agents.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Knowledge Base/RAG</span>
+                <h3>Agents can ground work in retrieved knowledge.</h3>
+                <p>
+                  The AI Knowledge Base/RAG layer gives workflows semantic retrieval over knowledge sources. Agents can
+                  search, rank, and use relevant context while Workflow Builder controls when retrieval happens.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Studio context</span>
+                <h3>Project context still stays scoped.</h3>
+                <p>
+                  Separate from agentic Paddie Memory, Studio context packages the selected workspace, attached
+                  templates, inspiration snapshots, Autopilot plans, run events, and final handoffs without silently
+                  changing unrelated chats or projects.
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="technology">
+          <div class="section-number">04 / Technology architecture</div>
+          <div class="section-body">
+            <h2>The technology is layered, not forked.</h2>
+            <p class="section-intro">
+              Paddie Studio is built as an additive desktop and Studio layer around opencode. The architecture keeps
+              provider configuration, sessions, shell execution, permissions, and coding tools in the opencode runtime,
+              while Paddie owns the Studio-specific UI, adapters, context packaging, and orchestration views.
+            </p>
+            <div class="diagram" aria-label="Paddie Studio technology architecture">
+              <div class="diagram-step">
+                <strong>Desktop app</strong>
+                <span>Tauri packages the local Windows desktop experience and sidecar runtime.</span>
+              </div>
+              <div class="diagram-step">
+                <strong>App UI</strong>
+                <span>Solid, TypeScript, and Paddie Studio components render chat, Studio, and workbench surfaces.</span>
+              </div>
+              <div class="diagram-step">
+                <strong>opencode</strong>
+                <span>Sessions, prompts, tools, shell execution, permissions, providers, and model routing.</span>
+              </div>
+              <div class="diagram-step">
+                <strong>Paddie APIs</strong>
+                <span>Templates, workflow catalog, Paddie Memory, Knowledge Base/RAG, generated clients, account state, and Studio resources.</span>
+              </div>
+              <div class="diagram-step">
+                <strong>Preview loop</strong>
+                <span>Local server detection, browser inspection, console checks, screenshots, and validation output.</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="autopilot">
+          <div class="section-number">05 / Native Autopilot</div>
+          <div class="section-body">
+            <h2>Autopilot turns goals into managed execution.</h2>
+            <p class="section-intro">
+              Paddie Native Autopilot is the autonomous layer inside Studio. It uses the currently selected opencode
+              model and provider, creates scoped worker sessions, keeps normal chat isolated, and shows live activity
+              as the run moves from planning to implementation, verification, preview, iteration, and handoff.
+            </p>
+            <div class="timeline">
+              <div class="timeline-item">
+                <div class="timeline-date">Plan</div>
+                <div>
+                  <h3>Break the request into tasks</h3>
+                  <p>Autopilot keeps one overall goal, creates a task queue, and shows what is pending, active, done, or blocked.</p>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <div class="timeline-date">Execute</div>
+                <div>
+                  <h3>Use scoped opencode workers</h3>
+                  <p>The worker edits files, runs commands, uses templates or workflows, and reports progress through the run timeline.</p>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <div class="timeline-date">Verify</div>
+                <div>
+                  <h3>Test, preview, and hand off</h3>
+                  <p>Checks and browser feedback are collected, failures can be fed back into the loop, and the final result is summarized.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="download">
+          <div class="section-number">06 / Download beta</div>
+          <div class="section-body">
+            <h2>Install the Windows beta with context.</h2>
+            <p class="section-intro">
+              The current Windows beta is distributed through GitHub Releases. Because early desktop builds may show a
+              Windows security prompt, the install path should be explicit: use the official GitHub release link, then
+              continue with the Paddie Studio installer.
+            </p>
+            <div class="download-panel">
+              <div class="download-copy">
+                <span class="tag">Windows beta</span>
+                <h3>Get Paddie Studio for local testing.</h3>
+                <p>
+                  Download the beta installer from the official GitHub release. The installer includes the desktop app
+                  and the local runtime pieces needed for Paddie Studio.
+                </p>
+                <div class="cta-row">
+                  <a
+                    class="button button-primary"
+                    href="https://github.com/michaelegbo/paddie-studio-ui-coder/releases/download/v1.4.72-beta.1/PaddieStudioBeta_1.4.72-beta.1_x64-setup.exe"
+                    >Download beta</a
+                  >
+                  <a class="button" href="https://github.com/michaelegbo/paddie-studio-ui-coder/releases/tag/v1.4.72-beta.1"
+                    >View release</a
+                  >
+                </div>
+              </div>
+              <div class="install-guide">
+                <span class="tag">Windows SmartScreen</span>
+                <h3>If Windows says "Don't run"</h3>
+                <div class="steps">
+                  <div class="step">
+                    <div class="step-number">1</div>
+                    <div>
+                      <strong>Confirm the file came from GitHub.</strong>
+                      <span>Use the official release link above and check the filename before opening it.</span>
+                    </div>
+                  </div>
+                  <div class="step">
+                    <div class="step-number">2</div>
+                    <div>
+                      <strong>Open Windows SmartScreen details.</strong>
+                      <span>If Windows shows "Windows protected your PC," choose "More info."</span>
+                    </div>
+                  </div>
+                  <div class="step">
+                    <div class="step-number">3</div>
+                    <div>
+                      <strong>Continue with the Paddie beta installer.</strong>
+                      <span>Choose "Run anyway" to start the installer, then follow the setup prompts.</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="trust-note">
+                  This guidance is for the Paddie Studio beta downloaded from the linked GitHub release. Avoid using
+                  these steps for installers from unknown sources.
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="safety">
+          <div class="section-number">07 / Safety model</div>
+          <div class="section-body">
+            <h2>Power stays visible and bounded.</h2>
+            <p class="section-intro">
+              The product is designed so advanced Studio features do not destabilize the normal coding path. Paddie
+              features are optional, scoped to selected workspaces, and built around explicit context, approval, and
+              upstream-safe integration boundaries.
+            </p>
+            <div class="grid grid-2">
+              <article class="card">
+                <span class="tag">Isolation</span>
+                <h3>Dedicated sessions for autonomous work.</h3>
+                <p>
+                  Autopilot creates scoped worker sessions instead of typing into the normal chat composer. Attaching a
+                  run to chat is optional discussion context, not the execution path.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Approvals</span>
+                <h3>Risky actions require explicit consent.</h3>
+                <p>
+                  Destructive file changes, git push or release, deploys, credential use, payments, publishing, and
+                  actions outside the workspace require approval before execution.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Provider reuse</span>
+                <h3>The selected model stays the source of intelligence.</h3>
+                <p>
+                  Paddie does not create a second credential system. Autopilot and chat use the provider, model, agent,
+                  and variant already selected in the app.
+                </p>
+              </article>
+              <article class="card">
+                <span class="tag">Upstream-safe</span>
+                <h3>Paddie features sit at clear boundaries.</h3>
+                <p>
+                  Studio tools are implemented as additive adapters around opencode so upstream chat, sessions, tools,
+                  and provider behavior remain practical to sync.
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-number">08 / Closing note</div>
+          <div class="section-body">
+            <div class="quote">
+              <p>
+                Paddie Studio turns AI software creation into a visible studio workflow: bring in the right design,
+                build the right agent workflow, connect memory and RAG, run the right model, preview the result, and
+                keep every autonomous step traceable.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <footer class="footer">
+          <span>Paddie Studio whitepaper / features and technology</span>
+          <span>
+            <a href="https://github.com/michaelegbo/paddie-studio-ui-coder">GitHub</a>
+            ·
+            <a href="https://paddie.io/waitlist">Waitlist</a>
+          </span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
