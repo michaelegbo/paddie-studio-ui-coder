@@ -54,6 +54,8 @@ describe("template helpers", () => {
     expect(html).toContain("const picking = false")
     expect(html).toContain('closest("a[href]")')
     expect(html).toContain("indexSection")
+    expect(html).toContain("const section = indexSection")
+    expect(html).toContain("if (!section) return")
     expect(html).toContain('"index.html"')
     expect(html).toContain("scrollIntoView")
     expect(html).toContain("if (!picking)")

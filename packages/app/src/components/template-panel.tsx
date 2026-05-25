@@ -33,6 +33,7 @@ import {
 import { useProviders } from "@/hooks/use-providers"
 import {
   DEFAULT_TEMPLATE_THUMB_DATA_URL,
+  TEMPLATE_PREVIEW_SANDBOX,
   filesFor,
   materialize,
   part,
@@ -1019,7 +1020,7 @@ export function TemplatePanel(props: {
                                         <iframe
                                           src={preview().kind === "src" ? preview().value : undefined}
                                           srcdoc={preview().kind === "srcdoc" ? preview().value : undefined}
-                                          sandbox="allow-scripts allow-same-origin"
+                                          sandbox={TEMPLATE_PREVIEW_SANDBOX}
                                           loading="lazy"
                                           tabIndex={-1}
                                           class="pointer-events-none block h-[calc(100%-40px)] w-full border-0 bg-white"
@@ -1112,7 +1113,7 @@ export function TemplatePanel(props: {
                     <div class="mt-1 max-w-[820px] text-12-medium text-text-weak">{cur().description}</div>
                     <Show when={!templateGalleryPreviewReady(cur().preview)}>
                       <div class="mt-2 max-w-[820px] rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-12-medium text-text-weak">
-                        Gallery preview is not generated yet (or SSR failed for this starter). You can still create a
+                        Stored preview is not generated yet. You can still create a
                         project from the files. Charts and other client-only widgets fill in after{" "}
                         <span class="text-text-base font-medium">npm install</span> and{" "}
                         <span class="text-text-base font-medium">npm run dev</span>.
@@ -1120,8 +1121,8 @@ export function TemplatePanel(props: {
                     </Show>
                     <Show when={templateIsReactProject(cur())}>
                       <div class="mt-2 max-w-[820px] rounded-xl border border-border-weaker-base bg-background-stronger px-3 py-2 text-12-medium text-text-weak">
-                        This starter is a full React + Vite project. The canvas shows a server-rendered snapshot plus
-                        built styles (no client bundle in the iframe). After you create the project locally, run{" "}
+                        This starter is a full React + Vite project. The canvas uses Paddie's interactive stored preview
+                        when available. After you create the project locally, run{" "}
                         <span class="text-text-base font-medium">npm install</span> and{" "}
                         <span class="text-text-base font-medium">npm run dev</span> for the interactive app.
                       </div>
@@ -1263,7 +1264,7 @@ export function TemplatePanel(props: {
                                 ref={frame}
                                 src={pick() ? undefined : url() || undefined}
                                 srcdoc={pick() ? doc() : (!url() ? browseDoc() : undefined)}
-                                sandbox="allow-scripts allow-same-origin"
+                                sandbox={TEMPLATE_PREVIEW_SANDBOX}
                                 class="block min-h-0 flex-1 w-full border-0 bg-white"
                                 title={`${cur().name} preview`}
                               />

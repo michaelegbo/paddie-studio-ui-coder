@@ -55,7 +55,7 @@ export type UITemplateMeta = {
   parts_count: number
   parts_summary: string[]
   is_active: boolean
-  /** From API: false when preview snapshot is still placeholder or empty */
+  /** From API: false when the stored preview is still placeholder or empty */
   preview_ready?: boolean
   display_order: number
 }
@@ -92,6 +92,8 @@ export function templateGalleryPreviewReady(preview: string | undefined): boolea
   if (p.includes("SSR build did not run")) return false
   return true
 }
+
+export const TEMPLATE_PREVIEW_SANDBOX = "allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
 
 const url = (value: string) => /^https?:\/\//i.test(value)
 
@@ -168,7 +170,9 @@ html.__paddie_pick, html.__paddie_pick * { cursor: crosshair !important; }
     if (picking) return
     const anchor = event.target instanceof Element ? event.target.closest("a[href]") : undefined
     if (!anchor) return
-    const hit = target(indexSection(anchor.getAttribute("href")))
+    const section = indexSection(anchor.getAttribute("href"))
+    if (!section) return
+    const hit = target(section)
     if (!hit) return
     stop(event)
     hit.scrollIntoView({ block: "start", inline: "nearest", behavior: "smooth" })
