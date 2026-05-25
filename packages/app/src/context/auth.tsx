@@ -1,6 +1,7 @@
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { createSignal, onCleanup, onMount } from "solid-js"
 import { isStudioAuthUrl } from "@/lib/paddie-links"
+import { trackPaddieStudioEvent } from "@/lib/paddie-telemetry"
 
 export type AuthUser = {
   userId: string
@@ -97,6 +98,11 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
     }
 
     const login = async (email: string, password: string): Promise<boolean> => {
+      const emailForTracking = email.trim().toLowerCase()
+      trackPaddieStudioEvent("login_submitted", {
+        status: "attempt",
+        email: emailForTracking,
+      })
       try {
         setIsLoading(true)
         const res = await platformFetch()(`${API_BASE}/auth/login`, {
@@ -107,10 +113,22 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
         if (!res.ok) {
           const body = await res.json().catch(() => null)
           if (body?.error) console.warn("Login failed:", body.error)
+          trackPaddieStudioEvent("login_failed", {
+            status: "failure",
+            email: emailForTracking,
+            message: body?.error ?? `HTTP ${res.status}`,
+          })
           return false
         }
         const body = await res.json()
-        if (!body.success || !body.data?.token) return false
+        if (!body.success || !body.data?.token) {
+          trackPaddieStudioEvent("login_failed", {
+            status: "failure",
+            email: emailForTracking,
+            message: body?.error ?? "Login response did not include a token",
+          })
+          return false
+        }
 
         const jwt = body.data.token
         localStorage.setItem(TOKEN_KEY, jwt)
@@ -125,10 +143,21 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
           })
         }
 
+        trackPaddieStudioEvent("login_succeeded", {
+          status: "success",
+          email: body.data.user?.email ?? emailForTracking,
+          userID: body.data.user?.id ?? body.data.user?._id,
+          tenantID: body.data.user?.tenant_id ?? body.data.user?.id,
+        })
         await hydrate(jwt)
         return true
       } catch (err) {
         console.warn("Login error:", err)
+        trackPaddieStudioEvent("login_failed", {
+          status: "failure",
+          email: emailForTracking,
+          message: err instanceof Error ? err.message : String(err),
+        })
         return false
       } finally {
         setIsLoading(false)
@@ -165,6 +194,7 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
                 localStorage.setItem(TOKEN_KEY, jwt)
                 localStorage.setItem(RMN_TOKEN_KEY, jwt)
                 setToken(jwt)
+                trackPaddieStudioEvent("login_deeplink_succeeded", { status: "success" })
                 void hydrate(jwt)
               }
             }

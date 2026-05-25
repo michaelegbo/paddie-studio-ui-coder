@@ -14,6 +14,11 @@ import { useAuth } from "@/context/auth"
 import { useSettings } from "@/context/settings"
 import { paddieApi, UpgradeRequiredError } from "@/lib/paddie-api"
 import { STUDIO_LOGIN_URL, STUDIO_SIGNUP_URL } from "@/lib/paddie-links"
+import {
+  trackPaddieStudioEvent,
+  type PaddieStudioEventName,
+  type PaddieStudioEventStatus,
+} from "@/lib/paddie-telemetry"
 import { AutopilotPanel } from "@/components/autopilot-panel"
 import { InspirationPanel } from "@/components/inspiration-panel"
 import { WorkflowBuilder, type WorkflowAttachPayload } from "@/components/workflow-builder"
@@ -28,12 +33,14 @@ import {
 import { useProviders } from "@/hooks/use-providers"
 import {
   DEFAULT_TEMPLATE_THUMB_DATA_URL,
+  TEMPLATE_PREVIEW_SANDBOX,
   filesFor,
   materialize,
   part,
   previewDoc,
   previewHtml,
   previewUrl,
+  templateCanAccess,
   templateGalleryPreviewReady,
   templateIsReactProject,
 } from "@/template/helpers"
@@ -59,7 +66,10 @@ function LoginCard(props: { desc?: string; openLink: (url: string) => void }) {
         </div>
         <Button
           class="mt-5 h-10 w-full justify-center text-13-medium"
-          onClick={() => props.openLink(STUDIO_LOGIN_URL)}
+          onClick={() => {
+            trackPaddieStudioEvent("login_browser_opened", { status: "attempt" })
+            props.openLink(STUDIO_LOGIN_URL)
+          }}
         >
           Sign in with browser
         </Button>
@@ -71,7 +81,13 @@ function LoginCard(props: { desc?: string; openLink: (url: string) => void }) {
           <button
             type="button"
             class="text-text-base underline underline-offset-2 hover:text-text-strong"
-            onClick={() => props.openLink(STUDIO_SIGNUP_URL)}
+            onClick={() => {
+              trackPaddieStudioEvent("login_browser_opened", {
+                status: "attempt",
+                metadata: { mode: "signup" },
+              })
+              props.openLink(STUDIO_SIGNUP_URL)
+            }}
           >
             Create account
           </button>
@@ -145,7 +161,7 @@ export function TemplatePanel(props: {
   const [wait, setWait] = createSignal(false)
   const [showUpgrade, setShowUpgrade] = createSignal(false)
   const [showProviderOnboarding, setShowProviderOnboarding] = createSignal(false)
-  const [upgradeInfo, setUpgradeInfo] = createSignal<{ required_tier: string; current_tier: string }>()
+  const [upgradeInfo, setUpgradeInfo] = createSignal<{ required_tier: string; current_plan: string }>()
   let frame: HTMLIFrameElement | undefined
   let stage: HTMLDivElement | undefined
 
@@ -180,11 +196,32 @@ export function TemplatePanel(props: {
     return part(t, pid()) ?? t.parts[0]
   })
 
-  const userTier = createMemo(() => auth.subscription()?.plan_slug ?? "free")
-  const tierOrder: Record<string, number> = { free: 0, basic: 1, pro: 2, custom: 3 }
-  const canAccess = (tier: string) => (tierOrder[userTier()] ?? 0) >= (tierOrder[tier] ?? 0)
+  const canAccess = (template: Pick<UITemplateMeta, "can_access" | "tier">) => templateCanAccess(template)
   const providerCatalogReady = createMemo(() => providers.all().length > 0)
   const connectedModelProviderCount = createMemo(() => providers.paid().length)
+
+  const trackTemplate = (
+    event: PaddieStudioEventName,
+    status: PaddieStudioEventStatus,
+    template?: Pick<UITemplateMeta, "id" | "name" | "stack" | "tier">,
+    metadata?: Record<string, unknown>,
+    message?: string,
+  ) => {
+    trackPaddieStudioEvent(event, {
+      status,
+      email: auth.user()?.email,
+      userID: auth.user()?.userId,
+      tenantID: auth.user()?.tenantId,
+      templateID: template?.id,
+      templateName: template?.name,
+      message,
+      metadata: {
+        stack: template?.stack,
+        tier: template?.tier,
+        ...metadata,
+      },
+    })
+  }
 
   const dismissProviderOnboarding = () => {
     markStudioProviderOnboardingSeen()
@@ -244,8 +281,14 @@ export function TemplatePanel(props: {
     try {
       const data = await paddieApi.get<UITemplate>(`/studio/ui-templates/${templateId}?v=${Date.now()}`)
       setDetailCache((prev) => (prev[templateId] ? prev : { ...prev, [templateId]: data }))
+      trackTemplate("template_gallery_preview_loaded", "success", data, {
+        previewReady: templateGalleryPreviewReady(previewHtml(data)),
+      })
     } catch {
       // Gallery previews are opportunistic. Opening the template still performs the full load/error flow.
+      trackTemplate("template_gallery_preview_failed", "failure", list().find((template) => template.id === templateId), {
+        templateID: templateId,
+      })
     } finally {
       setGalleryPreviewLoading((prev) => {
         const next = { ...prev }
@@ -256,7 +299,7 @@ export function TemplatePanel(props: {
   }
   const prefetchGalleryPreviews = async (items: UITemplateMeta[]) => {
     const runID = ++galleryPreviewPrefetchRun
-    for (const item of items.filter((template) => canAccess(template.tier)).slice(0, GALLERY_PREVIEW_PREFETCH_LIMIT)) {
+    for (const item of items.filter(canAccess).slice(0, GALLERY_PREVIEW_PREFETCH_LIMIT)) {
       if (runID !== galleryPreviewPrefetchRun) return
       await fetchGalleryPreview(item.id)
     }
@@ -273,9 +316,24 @@ export function TemplatePanel(props: {
       setListError(undefined)
       if (data.length > 0 && !id()) setID(data[0].id)
       void prefetchGalleryPreviews(data)
+      trackPaddieStudioEvent("template_catalog_loaded", {
+        status: "success",
+        email: auth.user()?.email,
+        userID: auth.user()?.userId,
+        tenantID: auth.user()?.tenantId,
+        metadata: { count: data.length },
+      })
       return true
     } catch (err) {
-      setListError(err instanceof Error ? err.message : "Failed to load templates")
+      const message = err instanceof Error ? err.message : "Failed to load templates"
+      setListError(message)
+      trackPaddieStudioEvent("template_catalog_failed", {
+        status: "failure",
+        email: auth.user()?.email,
+        userID: auth.user()?.userId,
+        tenantID: auth.user()?.tenantId,
+        message,
+      })
       return false
     } finally {
       setListLoading(false)
@@ -291,16 +349,26 @@ export function TemplatePanel(props: {
         `/studio/ui-templates/${templateId}?v=${Date.now()}`,
       )
       setDetailCache((prev) => ({ ...prev, [templateId]: data }))
+      trackTemplate("template_detail_loaded", "success", data, {
+        parts: data.parts.length,
+        files: data.files.length,
+      })
       return true
     } catch (err) {
       if (err instanceof UpgradeRequiredError) {
-        setUpgradeInfo({ required_tier: err.required_tier, current_tier: err.current_tier })
+        setUpgradeInfo({ required_tier: err.required_tier, current_plan: err.current_plan })
         setShowUpgrade(true)
         setView("library")
+        trackTemplate("template_detail_failed", "failure", list().find((template) => template.id === templateId), {
+          requiredTier: err.required_tier,
+          currentPlan: err.current_plan,
+        }, err.message)
         return false
       }
-      showToast({ variant: "error", title: "Failed to load template", description: err instanceof Error ? err.message : String(err) })
+      const message = err instanceof Error ? err.message : String(err)
+      showToast({ variant: "error", title: "Failed to load template", description: message })
       setView("library")
+      trackTemplate("template_detail_failed", "failure", list().find((template) => template.id === templateId), undefined, message)
       return false
     } finally {
       setDetailLoading(false)
@@ -381,6 +449,10 @@ export function TemplatePanel(props: {
   }
 
   const open = async (next: string) => {
+    const item = list().find((template) => template.id === next)
+    trackTemplate("template_opened", "attempt", item, {
+      locked: item ? !canAccess(item) : false,
+    })
     setID(next)
     setPID("full")
     setPick(false)
@@ -445,6 +517,14 @@ export function TemplatePanel(props: {
         description: opts?.label ? `${cur.name} - ${opts.label}` : `${cur.name} - ${item.name}`,
       })
     }
+    trackTemplate("template_attached", "success", cur, {
+      partID: item.id,
+      partName: item.name,
+      selector: opts?.selector,
+      label: opts?.label,
+      hasPickedHtml: Boolean(opts?.html),
+      hasPickedText: Boolean(opts?.text),
+    })
   }
 
   const attachWorkflow = (payload: WorkflowAttachPayload) => {
@@ -487,6 +567,20 @@ export function TemplatePanel(props: {
       title: "Workflow added to chat",
       description: `${flow.name} is ready to use in code.`,
     })
+    trackPaddieStudioEvent("workflow_attached", {
+      status: "success",
+      email: auth.user()?.email,
+      userID: auth.user()?.userId,
+      tenantID: auth.user()?.tenantId,
+      workflowID: flow.id,
+      workflowName: flow.name,
+      metadata: {
+        status: flow.status,
+        nodes: flow.nodes.length,
+        edges: flow.edges.length,
+        language: codegen.language,
+      },
+    })
   }
 
   const create = async () => {
@@ -498,6 +592,7 @@ export function TemplatePanel(props: {
         title: "Templates need the desktop app",
         description: "Create-from-template is only available in the desktop build.",
       })
+      trackTemplate("template_create_failed", "failure", cur, undefined, "Create-from-template is only available in the desktop build.")
       return
     }
 
@@ -512,14 +607,20 @@ export function TemplatePanel(props: {
     const name = raw?.trim()
     if (!name) return
 
+    trackTemplate("template_create_started", "attempt", cur, {
+      projectName: name,
+      files: cur.files.length,
+    })
     const next = await fs
       .create({ parent: root, name: slug(name), files: materialize(cur, name) })
       .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err)
         showToast({
           variant: "error",
           title: "Could not create project",
-          description: err instanceof Error ? err.message : String(err),
+          description: message,
         })
+        trackTemplate("template_create_failed", "failure", cur, { projectName: name }, message)
         return
       })
     if (!next) return
@@ -531,6 +632,9 @@ export function TemplatePanel(props: {
       title: "Project created",
       description: next,
     })
+    trackTemplate("template_create_succeeded", "success", cur, {
+      projectName: name,
+    })
   }
 
   const loadPick = async () => {
@@ -540,6 +644,10 @@ export function TemplatePanel(props: {
     if (cached) {
       setDoc(cached)
       setPick(true)
+      trackTemplate("template_picker_loaded", "success", cur, {
+        source: "cache",
+        bytes: cached.length,
+      })
       return
     }
     const link = previewUrl(cur)
@@ -561,18 +669,25 @@ export function TemplatePanel(props: {
           title: "Could not load template picker",
           description: "No preview document was available for this template.",
         })
+        trackTemplate("template_picker_failed", "failure", cur, undefined, "No preview document was available for this template.")
         return
       }
       const value = previewDoc(link, next, cur.parts)
       setDocCache((prev) => ({ ...prev, [cur.id]: value }))
       setDoc(value)
       setPick(true)
+      trackTemplate("template_picker_loaded", "success", cur, {
+        source: hasPreviewHtml ? "preview" : link ? "preview_url" : "inline",
+        bytes: value.length,
+      })
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
       showToast({
         variant: "error",
         title: "Could not load template picker",
-        description: err instanceof Error ? err.message : String(err),
+        description: message,
       })
+      trackTemplate("template_picker_failed", "failure", cur, undefined, message)
     } finally {
       setWait(false)
     }
@@ -690,7 +805,7 @@ export function TemplatePanel(props: {
               <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Upgrade required</div>
               <div class="mt-2 text-18-medium text-text-base">This template requires a higher plan</div>
               <div class="mt-2 text-13-medium text-text-weak">
-                Your current plan is <span class="font-semibold text-text-base capitalize">{upgradeInfo()?.current_tier ?? "free"}</span>.
+                Your current plan is <span class="font-semibold text-text-base capitalize">{upgradeInfo()?.current_plan ?? "free"}</span>.
                 This template requires the <span class="font-semibold text-text-base capitalize">{upgradeInfo()?.required_tier ?? "pro"}</span> plan or above.
               </div>
               <div class="mt-6 flex gap-3">
@@ -842,7 +957,7 @@ export function TemplatePanel(props: {
                     <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                       <For each={list()}>
                         {(item) => {
-                          const locked = () => !canAccess(item.tier)
+                          const locked = () => !canAccess(item)
                           return (
                             <div
                               role="button"
@@ -904,7 +1019,7 @@ export function TemplatePanel(props: {
                                         <iframe
                                           src={preview().kind === "src" ? preview().value : undefined}
                                           srcdoc={preview().kind === "srcdoc" ? preview().value : undefined}
-                                          sandbox="allow-scripts allow-same-origin"
+                                          sandbox={TEMPLATE_PREVIEW_SANDBOX}
                                           loading="lazy"
                                           tabIndex={-1}
                                           class="pointer-events-none block h-[calc(100%-40px)] w-full border-0 bg-white"
@@ -997,7 +1112,7 @@ export function TemplatePanel(props: {
                     <div class="mt-1 max-w-[820px] text-12-medium text-text-weak">{cur().description}</div>
                     <Show when={!templateGalleryPreviewReady(cur().preview)}>
                       <div class="mt-2 max-w-[820px] rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-12-medium text-text-weak">
-                        Gallery preview is not generated yet (or SSR failed for this starter). You can still create a
+                        Stored preview is not generated yet. You can still create a
                         project from the files. Charts and other client-only widgets fill in after{" "}
                         <span class="text-text-base font-medium">npm install</span> and{" "}
                         <span class="text-text-base font-medium">npm run dev</span>.
@@ -1005,8 +1120,8 @@ export function TemplatePanel(props: {
                     </Show>
                     <Show when={templateIsReactProject(cur())}>
                       <div class="mt-2 max-w-[820px] rounded-xl border border-border-weaker-base bg-background-stronger px-3 py-2 text-12-medium text-text-weak">
-                        This starter is a full React + Vite project. The canvas shows a server-rendered snapshot plus
-                        built styles (no client bundle in the iframe). After you create the project locally, run{" "}
+                        This starter is a full React + Vite project. The canvas uses Paddie's interactive stored preview
+                        when available. After you create the project locally, run{" "}
                         <span class="text-text-base font-medium">npm install</span> and{" "}
                         <span class="text-text-base font-medium">npm run dev</span> for the interactive app.
                       </div>
@@ -1148,7 +1263,7 @@ export function TemplatePanel(props: {
                                 ref={frame}
                                 src={pick() ? undefined : url() || undefined}
                                 srcdoc={pick() ? doc() : (!url() ? browseDoc() : undefined)}
-                                sandbox="allow-scripts allow-same-origin"
+                                sandbox={TEMPLATE_PREVIEW_SANDBOX}
                                 class="block min-h-0 flex-1 w-full border-0 bg-white"
                                 title={`${cur().name} preview`}
                               />
