@@ -40,6 +40,7 @@ import {
   previewDoc,
   previewHtml,
   previewUrl,
+  templateCanAccess,
   templateGalleryPreviewReady,
   templateIsReactProject,
 } from "@/template/helpers"
@@ -160,7 +161,7 @@ export function TemplatePanel(props: {
   const [wait, setWait] = createSignal(false)
   const [showUpgrade, setShowUpgrade] = createSignal(false)
   const [showProviderOnboarding, setShowProviderOnboarding] = createSignal(false)
-  const [upgradeInfo, setUpgradeInfo] = createSignal<{ required_tier: string; current_tier: string }>()
+  const [upgradeInfo, setUpgradeInfo] = createSignal<{ required_tier: string; current_plan: string }>()
   let frame: HTMLIFrameElement | undefined
   let stage: HTMLDivElement | undefined
 
@@ -195,9 +196,7 @@ export function TemplatePanel(props: {
     return part(t, pid()) ?? t.parts[0]
   })
 
-  const userTier = createMemo(() => auth.subscription()?.plan_slug ?? "free")
-  const tierOrder: Record<string, number> = { free: 0, basic: 1, pro: 2, custom: 3 }
-  const canAccess = (tier: string) => (tierOrder[userTier()] ?? 0) >= (tierOrder[tier] ?? 0)
+  const canAccess = (template: Pick<UITemplateMeta, "can_access" | "tier">) => templateCanAccess(template)
   const providerCatalogReady = createMemo(() => providers.all().length > 0)
   const connectedModelProviderCount = createMemo(() => providers.paid().length)
 
@@ -300,7 +299,7 @@ export function TemplatePanel(props: {
   }
   const prefetchGalleryPreviews = async (items: UITemplateMeta[]) => {
     const runID = ++galleryPreviewPrefetchRun
-    for (const item of items.filter((template) => canAccess(template.tier)).slice(0, GALLERY_PREVIEW_PREFETCH_LIMIT)) {
+    for (const item of items.filter(canAccess).slice(0, GALLERY_PREVIEW_PREFETCH_LIMIT)) {
       if (runID !== galleryPreviewPrefetchRun) return
       await fetchGalleryPreview(item.id)
     }
@@ -357,12 +356,12 @@ export function TemplatePanel(props: {
       return true
     } catch (err) {
       if (err instanceof UpgradeRequiredError) {
-        setUpgradeInfo({ required_tier: err.required_tier, current_tier: err.current_tier })
+        setUpgradeInfo({ required_tier: err.required_tier, current_plan: err.current_plan })
         setShowUpgrade(true)
         setView("library")
         trackTemplate("template_detail_failed", "failure", list().find((template) => template.id === templateId), {
           requiredTier: err.required_tier,
-          currentTier: err.current_tier,
+          currentPlan: err.current_plan,
         }, err.message)
         return false
       }
@@ -452,7 +451,7 @@ export function TemplatePanel(props: {
   const open = async (next: string) => {
     const item = list().find((template) => template.id === next)
     trackTemplate("template_opened", "attempt", item, {
-      locked: item ? !canAccess(item.tier) : false,
+      locked: item ? !canAccess(item) : false,
     })
     setID(next)
     setPID("full")
@@ -806,7 +805,7 @@ export function TemplatePanel(props: {
               <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Upgrade required</div>
               <div class="mt-2 text-18-medium text-text-base">This template requires a higher plan</div>
               <div class="mt-2 text-13-medium text-text-weak">
-                Your current plan is <span class="font-semibold text-text-base capitalize">{upgradeInfo()?.current_tier ?? "free"}</span>.
+                Your current plan is <span class="font-semibold text-text-base capitalize">{upgradeInfo()?.current_plan ?? "free"}</span>.
                 This template requires the <span class="font-semibold text-text-base capitalize">{upgradeInfo()?.required_tier ?? "pro"}</span> plan or above.
               </div>
               <div class="mt-6 flex gap-3">
@@ -958,7 +957,7 @@ export function TemplatePanel(props: {
                     <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                       <For each={list()}>
                         {(item) => {
-                          const locked = () => !canAccess(item.tier)
+                          const locked = () => !canAccess(item)
                           return (
                             <div
                               role="button"

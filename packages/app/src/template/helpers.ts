@@ -55,6 +55,10 @@ export type UITemplateMeta = {
   parts_count: number
   parts_summary: string[]
   is_active: boolean
+  can_access?: boolean
+  required_tier?: string
+  current_plan?: string
+  upgrade_required?: boolean
   /** From API: false when the stored preview is still placeholder or empty */
   preview_ready?: boolean
   display_order: number
@@ -74,10 +78,17 @@ export type UITemplate = {
   parts: TemplatePart[]
   tags?: string[]
   is_active: boolean
+  can_access?: boolean
+  required_tier?: string
+  current_plan?: string
+  upgrade_required?: boolean
   display_order: number
 }
 
 export const part = (tpl: UITemplate, id?: string) => tpl.parts.find((item) => item.id === (id || "full"))
+
+export const templateCanAccess = (tpl: Pick<UITemplateMeta, "can_access" | "tier">) =>
+  typeof tpl.can_access === "boolean" ? tpl.can_access : tpl.tier === "free"
 
 /** Templates imported as full Vite + React trees (API may tag with `paddie:react-package`). */
 export const templateIsReactProject = (tpl: UITemplate) =>

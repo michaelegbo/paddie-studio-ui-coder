@@ -3,6 +3,7 @@ import {
   previewDoc,
   previewHtml,
   previewUrl,
+  templateCanAccess,
   templateGalleryPreviewReady,
   templateIsReactProject,
   type UITemplate,
@@ -66,6 +67,13 @@ describe("template helpers", () => {
     expect(templateIsReactProject(tpl({ tags: ["paddie:react-package"] }))).toBe(true)
     expect(templateIsReactProject(tpl({ tags: ["react"] }))).toBe(false)
     expect(templateIsReactProject(tpl({}))).toBe(false)
+  })
+
+  test("uses RMN access metadata for template locks", () => {
+    expect(templateCanAccess({ tier: "pro", can_access: true })).toBe(true)
+    expect(templateCanAccess({ tier: "free", can_access: false })).toBe(false)
+    expect(templateCanAccess({ tier: "free" })).toBe(true)
+    expect(templateCanAccess({ tier: "pro" })).toBe(false)
   })
 
   test("templateGalleryPreviewReady rejects stubs", () => {

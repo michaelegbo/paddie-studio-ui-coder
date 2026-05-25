@@ -13,7 +13,7 @@ import {
 } from "solid-js"
 import { type AuthUser, useAuth } from "@/context/auth"
 import { usePlatform } from "@/context/platform"
-import { paddieApi } from "@/lib/paddie-api"
+import { paddieApi, paddieApiErrorMessage } from "@/lib/paddie-api"
 import { PADDIE_APP_ORIGIN, WORKFLOW_BUILDER_URL } from "@/lib/paddie-links"
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
@@ -289,6 +289,7 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
     const list = flows() ?? []
     return list.find((item) => item.id === selectedFlowId()) ?? list[0]
   })
+  const workflowError = createMemo(() => (flows.error ? paddieApiErrorMessage(flows.error) : undefined))
   const open = () => platform.openLink(WORKFLOW_BUILDER_URL)
   const fit = () => {
     const win = frame?.contentWindow
@@ -375,7 +376,7 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
       showToast({
         variant: "error",
         title: "Could not add workflow",
-        description: err instanceof Error ? err.message : String(err),
+        description: paddieApiErrorMessage(err),
       })
     } finally {
       setAttaching(false)
@@ -494,7 +495,7 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
         >
           <Show
             when={(flows()?.length ?? 0) > 0}
-            fallback={<option value="">{flows.loading ? "Loading workflows..." : "No saved workflows"}</option>}
+            fallback={<option value="">{workflowError() ? "Workflow access unavailable" : flows.loading ? "Loading workflows..." : "No saved workflows"}</option>}
           >
             <For each={flows() ?? []}>
               {(flow) => (
@@ -524,6 +525,18 @@ function WorkflowBuilderFrame(props: { onAttachWorkflow?: (payload: WorkflowAtta
           {attaching() ? "Adding..." : "Add workflow to code"}
         </Button>
       </div>
+
+      <Show when={workflowError()}>
+        {(message) => (
+          <div class="shrink-0 border-b border-[#fbbf24]/25 bg-[#fbbf24]/10 px-4 py-3">
+            <div class="text-12-medium text-text-base">Workflow Builder access</div>
+            <div class="mt-1 text-11-medium text-text-weak">{message()}</div>
+            <Button variant="ghost" class="mt-2 h-7 px-2 text-11-medium" onClick={refresh}>
+              Retry
+            </Button>
+          </div>
+        )}
+      </Show>
 
       <Show
         when={!doc.error}

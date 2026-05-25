@@ -50,7 +50,7 @@ import { useLocal } from "@/context/local"
 import { usePrompt } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
-import { paddieApi } from "@/lib/paddie-api"
+import { paddieApi, paddieApiErrorMessage } from "@/lib/paddie-api"
 import { filesFor, type UITemplate, type UITemplateMeta } from "@/template/helpers"
 import { Persist, persisted } from "@/utils/persist"
 import { previewFromSession } from "@/utils/preview-url"
@@ -1989,4 +1989,8 @@ export function AutopilotPanel(props: {
 
 const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 
-const errorText = (err: unknown) => (err instanceof Error ? `${err.message}\n${err.stack ?? ""}`.trim() : String(err))
+const errorText = (err: unknown) => {
+  const message = paddieApiErrorMessage(err)
+  if (!(err instanceof Error) || !err.stack) return message
+  return `${message}\n${err.stack}`.trim()
+}
