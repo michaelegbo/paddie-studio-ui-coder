@@ -26,12 +26,72 @@ function getToken(): string | undefined {
 export class UpgradeRequiredError extends Error {
   required_tier: string
   current_tier: string
-  constructor(required: string, current: string) {
-    super("Upgrade required")
+  current_plan: string
+  code?: string
+  limit?: number
+  current?: number
+  upgrade_url?: string
+  constructor(
+    required:
+      | string
+      | {
+          message?: string
+          code?: string
+          required_tier?: string
+          current_tier?: string
+          current_plan?: string
+          limit?: number
+          current?: number
+          upgrade_url?: string
+        },
+    current?: string,
+  ) {
+    const payload = typeof required === "string" ? { required_tier: required, current_tier: current } : required
+    super(payload.message || "Upgrade required")
     this.name = "UpgradeRequiredError"
-    this.required_tier = required
-    this.current_tier = current
+    this.required_tier = payload.required_tier ?? ""
+    this.current_tier = payload.current_tier ?? payload.current_plan ?? ""
+    this.current_plan = payload.current_plan ?? this.current_tier
+    this.code = payload.code
+    this.limit = payload.limit
+    this.current = payload.current
+    this.upgrade_url = payload.upgrade_url
   }
+}
+
+export const paddieApiErrorMessage = (err: unknown) => {
+  if (err instanceof UpgradeRequiredError) {
+    const usage =
+      typeof err.limit === "number" && err.limit >= 0 && typeof err.current === "number"
+        ? ` (${err.current}/${err.limit})`
+        : ""
+    return `${err.message}${usage}`
+  }
+  return err instanceof Error ? err.message : String(err)
+}
+
+export function paddieApiErrorFromResponse(status: number, body: unknown) {
+  const data = body && typeof body === "object" ? (body as Record<string, unknown>) : {}
+  if (status === 402 && data.upgrade_required) {
+    return new UpgradeRequiredError({
+      message: typeof data.message === "string" ? data.message : typeof data.error === "string" ? data.error : "Upgrade required",
+      code: typeof data.code === "string" ? data.code : undefined,
+      required_tier: typeof data.required_tier === "string" ? data.required_tier : undefined,
+      current_tier: typeof data.current_tier === "string" ? data.current_tier : undefined,
+      current_plan:
+        typeof data.current_plan === "string"
+          ? data.current_plan
+          : typeof data.current_tier === "string"
+            ? data.current_tier
+            : undefined,
+      limit: typeof data.limit === "number" ? data.limit : undefined,
+      current: typeof data.current === "number" ? data.current : undefined,
+      upgrade_url: typeof data.upgrade_url === "string" ? data.upgrade_url : undefined,
+    })
+  }
+  return new Error(
+    typeof data.message === "string" ? data.message : typeof data.error === "string" ? data.error : `HTTP ${status}`,
+  )
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -55,25 +115,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error("unauthorized")
   }
 
-  let body: any
+  let body: unknown
   try {
     body = await res.json()
   } catch {
     throw new Error(`HTTP ${res.status}: non-JSON response`)
   }
 
-  if (res.status === 402 && body.upgrade_required) {
-    throw new UpgradeRequiredError(
-      body.required_tier ?? "",
-      body.current_tier ?? "",
-    )
-  }
-
   if (!res.ok) {
-    throw new Error(body.error ?? `HTTP ${res.status}`)
+    throw paddieApiErrorFromResponse(res.status, body)
   }
 
-  return body.data ?? body
+  const data = body && typeof body === "object" ? (body as { data?: T }) : undefined
+  return data?.data ?? (body as T)
 }
 
 export const paddieApi = {

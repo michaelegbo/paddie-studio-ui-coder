@@ -3,6 +3,7 @@ import {
   previewDoc,
   previewHtml,
   previewUrl,
+  templateCanAccess,
   templateGalleryPreviewReady,
   templateIsReactProject,
   type UITemplate,
@@ -54,6 +55,8 @@ describe("template helpers", () => {
     expect(html).toContain("const picking = false")
     expect(html).toContain('closest("a[href]")')
     expect(html).toContain("indexSection")
+    expect(html).toContain("const section = indexSection")
+    expect(html).toContain("if (!section) return")
     expect(html).toContain('"index.html"')
     expect(html).toContain("scrollIntoView")
     expect(html).toContain("if (!picking)")
@@ -64,6 +67,13 @@ describe("template helpers", () => {
     expect(templateIsReactProject(tpl({ tags: ["paddie:react-package"] }))).toBe(true)
     expect(templateIsReactProject(tpl({ tags: ["react"] }))).toBe(false)
     expect(templateIsReactProject(tpl({}))).toBe(false)
+  })
+
+  test("uses RMN access metadata for template locks", () => {
+    expect(templateCanAccess({ tier: "pro", can_access: true })).toBe(true)
+    expect(templateCanAccess({ tier: "free", can_access: false })).toBe(false)
+    expect(templateCanAccess({ tier: "free" })).toBe(true)
+    expect(templateCanAccess({ tier: "pro" })).toBe(false)
   })
 
   test("templateGalleryPreviewReady rejects stubs", () => {
