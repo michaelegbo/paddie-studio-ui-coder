@@ -975,21 +975,48 @@ export function TemplatePanel(props: {
                               }}
                             >
                             <div
-                              class="relative overflow-hidden rounded-[16px] border border-border-weaker-base bg-[#111218]"
-                              style={{ height: `${miniH + 16}px` }}
+                              class="relative overflow-hidden rounded-[18px] border border-border-weaker-base bg-[#0e1017] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                             >
-                              <div class="pointer-events-none absolute inset-x-0 top-0 z-10 h-12 bg-gradient-to-b from-[#111218] via-[rgba(17,18,24,0.78)] to-transparent" />
-                              <div class="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.06),transparent_48%)]" />
-                              <div class="absolute inset-0 overflow-hidden p-2 flex items-start justify-center">
-                                <div class="relative shrink-0" style={{ width: `${miniW}px`, height: `${miniH}px` }}>
-                                  <div
-                                    class="absolute left-0 top-0 origin-top-left overflow-hidden rounded-[12px] border border-border-weaker-base bg-[#14151d] shadow-[var(--shadow-lg-border-base)]"
-                                    style={{
-                                      width: `${mini.w}px`,
-                                      height: `${mini.h}px`,
-                                      transform: `scale(${mini.scale})`,
-                                    }}
-                                  >
+                              <div class="mb-3 flex min-h-7 items-center gap-2">
+                                <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                                  <Show when={item.is_active === false}>
+                                    <div class="rounded-full border border-border-weaker-base bg-background-base px-2 py-0.5 text-10-medium text-text-weak">
+                                      Inactive
+                                    </div>
+                                  </Show>
+                                  <Show when={item.preview_ready === false}>
+                                    <div class="flex items-center gap-1.5 rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-10-medium text-amber-200">
+                                      <span class="size-1.5 rounded-full bg-amber-300" />
+                                      Preview pending
+                                    </div>
+                                  </Show>
+                                  <Show when={item.tier !== "free"}>
+                                    <div classList={{
+                                      "rounded-full px-2 py-0.5 text-10-medium border": true,
+                                      "border-yellow-500/30 bg-yellow-500/12 text-yellow-300": item.tier === "basic",
+                                      "border-purple-500/30 bg-purple-500/12 text-purple-300": item.tier === "pro",
+                                      "border-sky-500/30 bg-sky-500/12 text-sky-300": item.tier === "custom",
+                                    }}>
+                                      {item.tier.charAt(0).toUpperCase() + item.tier.slice(1)}
+                                    </div>
+                                  </Show>
+                                </div>
+                                <div class="max-w-[60%] shrink-0 truncate rounded-full border border-border-weaker-base bg-background-base px-2 py-0.5 text-10-medium text-text-weak">
+                                  {item.stack}
+                                </div>
+                              </div>
+                              <div class="relative overflow-hidden rounded-[14px] border border-border-weaker-base bg-[#111218]" style={{ height: `${miniH}px` }}>
+                                <div class="pointer-events-none absolute inset-0 z-10 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.05),transparent_54%)]" />
+                                <div class="absolute inset-0 overflow-hidden flex items-start justify-center">
+                                  <div class="relative shrink-0" style={{ width: `${miniW}px`, height: `${miniH}px` }}>
+                                    <div
+                                      class="absolute left-0 top-0 origin-top-left overflow-hidden rounded-[12px] border border-border-weaker-base bg-[#14151d] shadow-[var(--shadow-lg-border-base)]"
+                                      style={{
+                                        width: `${mini.w}px`,
+                                        height: `${mini.h}px`,
+                                        transform: `scale(${mini.scale})`,
+                                      }}
+                                    >
                                     <div class="h-10 shrink-0 border-b border-border-weaker-base bg-[#111218] flex items-center gap-2 px-4">
                                       <div class="size-2 rounded-full bg-[#f87171]" />
                                       <div class="size-2 rounded-full bg-[#fbbf24]" />
@@ -1030,31 +1057,6 @@ export function TemplatePanel(props: {
                                   </div>
                                 </div>
                               </div>
-                              <div class="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#111218] via-[rgba(17,18,24,0.88)] to-transparent" />
-                              <div class="pointer-events-none absolute right-3 top-3 flex items-center gap-1.5">
-                                <Show when={item.is_active === false}>
-                                  <div class="rounded-full border border-border-weaker-base bg-black/35 px-2 py-0.5 text-10-medium text-text-weak backdrop-blur-sm">
-                                    Inactive
-                                  </div>
-                                </Show>
-                                <Show when={item.preview_ready === false}>
-                                  <div class="rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-10-medium text-amber-200 backdrop-blur-sm">
-                                    Preview pending
-                                  </div>
-                                </Show>
-                                <Show when={item.tier !== "free"}>
-                                  <div classList={{
-                                    "rounded-full px-2 py-0.5 text-10-medium backdrop-blur-sm border": true,
-                                    "border-yellow-500/30 bg-yellow-500/15 text-yellow-400": item.tier === "basic",
-                                    "border-purple-500/30 bg-purple-500/15 text-purple-400": item.tier === "pro",
-                                    "border-sky-500/30 bg-sky-500/15 text-sky-400": item.tier === "custom",
-                                  }}>
-                                    {item.tier.charAt(0).toUpperCase() + item.tier.slice(1)}
-                                  </div>
-                                </Show>
-                                <div class="rounded-full border border-border-weaker-base bg-background-base/85 px-2 py-0.5 text-10-medium text-text-weak backdrop-blur-sm">
-                                  {item.stack}
-                                </div>
                               </div>
                               <Show when={locked()}>
                                 <div class="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
