@@ -42,7 +42,7 @@ type Tab = {
   dirty: boolean
 }
 
-type Mode = "code" | "split" | "preview"
+type Mode = "code" | "preview"
 type Surface = "studio" | "templates"
 type Device = "desktop" | "tablet" | "mobile"
 type Desk = "1920" | "1600" | "1440"
@@ -263,11 +263,10 @@ export function WorkbenchPanel(props: {
   const [state, setState] = createStore({
     files: true,
     left: 280,
-    right: 420,
     box: 0,
     previewW: 0,
     previewH: 0,
-    mode: "split" as Mode,
+    mode: "code" as Mode,
     surface: "studio" as Surface,
     device: "desktop" as Device,
     desk: "1920" as Desk,
@@ -305,25 +304,17 @@ export function WorkbenchPanel(props: {
   const showFiles = createMemo(() => state.mode !== "preview" && state.files)
   const box = createMemo(() => state.box || 1200)
   const leftMin = 220
-  const rightMin = 320
   const editMin = 320
   const leftMax = createMemo(() => {
     if (!showFiles()) return 0
-    const keep = (state.mode === "split" ? Math.max(rightMin, state.right) : 0) + editMin
+    const keep = editMin
     return Math.max(0, Math.min(420, box() - keep))
   })
-  const rightMax = createMemo(() => {
-    if (state.mode !== "split") return box()
-    const keep = (showFiles() ? Math.min(420, Math.max(leftMin, state.left)) : 0) + editMin
-    return Math.max(0, box() - keep)
-  })
   const leftFloor = createMemo(() => Math.min(leftMin, leftMax()))
-  const rightFloor = createMemo(() => Math.min(rightMin, rightMax()))
   const left = createMemo(() => (showFiles() ? Math.max(0, Math.min(state.left, leftMax())) : 0))
   const right = createMemo(() => {
-    if (state.mode === "code") return 0
     if (state.mode === "preview") return box()
-    return Math.max(0, Math.min(state.right, rightMax()))
+    return 0
   })
   const edit = createMemo(() => Math.max(0, box() - left() - right()))
   const previewInlineInset = createMemo(() => (state.mode === "preview" ? 50 : 26))
@@ -498,7 +489,7 @@ export function WorkbenchPanel(props: {
 
     setState("tabs", (list) => [...list, { name: base(path), path, value: next, saved: next, dirty: false }])
     setState("active", path)
-    if (state.mode === "preview") setState("mode", "split")
+    if (state.mode === "preview") setState("mode", "code")
   }
 
   const save = async (path = tab()?.path, opts?: { quiet?: boolean }) => {
@@ -637,14 +628,6 @@ export function WorkbenchPanel(props: {
     setState("previewH", nextH)
   }
 
-  const resizePreview = (next: number) => {
-    size.touch()
-    setState("right", next)
-    setState("previewW", Math.max(0, next - previewInlineInset()))
-    queueMicrotask(fitPreview)
-    requestAnimationFrame(fitPreview)
-  }
-
   const fitBody = () => {
     if (!body) return
     const style = getComputedStyle(body)
@@ -703,14 +686,6 @@ export function WorkbenchPanel(props: {
     setState("left", Math.round(max))
   })
 
-  createEffect(() => {
-    const max = rightMax()
-    if (state.right <= max) return
-    setState("right", Math.round(max))
-    queueMicrotask(fitPreview)
-    requestAnimationFrame(fitPreview)
-  })
-
   command.register("workbench.preview", () => {
     const list = [
       {
@@ -733,13 +708,6 @@ export function WorkbenchPanel(props: {
         category: "Workbench",
         disabled: state.mode === "code" || state.surface !== "studio",
         onSelect: () => setMode("code"),
-      },
-      {
-        id: "workbench.mode.split",
-        title: "Show Code + Preview",
-        category: "Workbench",
-        disabled: state.mode === "split" || state.surface !== "studio",
-        onSelect: () => setMode("split"),
       },
       {
         id: "workbench.mode.preview",
@@ -884,7 +852,7 @@ export function WorkbenchPanel(props: {
     )
   }
 
-  const modeButton = (value: Mode, icon: "code" | "layout-right-partial" | "eye", label: string) => (
+  const modeButton = (value: Mode, icon: "code" | "eye", label: string) => (
     <button
       type="button"
       classList={{
@@ -959,7 +927,6 @@ export function WorkbenchPanel(props: {
             <Show when={state.surface === "studio"}>
               <div class={seg}>
                 {modeButton("code", "code", "Code")}
-                {modeButton("split", "layout-right-partial", "Split")}
                 {modeButton("preview", "eye", "Preview")}
               </div>
               <Show when={state.mode !== "preview"}>
@@ -1138,19 +1105,6 @@ export function WorkbenchPanel(props: {
               </div>
             </div>
           </section>
-
-          <Show when={state.mode === "split"}>
-            <div class="relative shrink-0" onPointerDown={() => size.start()}>
-              <ResizeHandle
-                direction="horizontal"
-                edge="start"
-                size={state.right}
-                min={rightFloor()}
-                max={rightMax()}
-                onResize={resizePreview}
-              />
-            </div>
-          </Show>
 
           <aside
             class={`${pane} ${anim()} bg-background-stronger flex flex-col`}
