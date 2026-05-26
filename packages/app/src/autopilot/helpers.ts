@@ -95,6 +95,23 @@ export type AutopilotResourceInput = {
   plannerOutput?: string
 }
 
+export type AutopilotTemplateSelectionStatus =
+  | "suggesting"
+  | "chosen"
+  | "applying"
+  | "applied"
+  | "skipped"
+
+export type AutopilotTemplateSelection = {
+  status: AutopilotTemplateSelectionStatus
+  id?: string
+  name?: string
+  stack?: string
+  tier?: string
+  decidedBy?: "user" | "autopilot" | "planner"
+  candidates?: AutopilotTemplateSummary[]
+}
+
 export type AutopilotContextPayload = {
   runID: string
   sessionID?: string
@@ -109,6 +126,7 @@ export type AutopilotContextPayload = {
   plan: AutopilotPlanStep[]
   events: AutopilotEvent[]
   safeguards: string[]
+  templateSelection?: AutopilotTemplateSelection
 }
 
 export type AutopilotRun = AutopilotContextPayload & {
@@ -408,6 +426,33 @@ export function setAutopilotTaskStatuses(
   }
 }
 
+export function setAutopilotTemplateSelection(
+  run: AutopilotRun,
+  selection: AutopilotTemplateSelection | undefined,
+  now = new Date().toISOString(),
+): AutopilotRun {
+  const current = run.templateSelection
+  if (!selection && !current) return run
+  if (selection && current && templateSelectionEqual(current, selection)) return run
+  return {
+    ...run,
+    templateSelection: selection ? { ...selection } : undefined,
+    updatedAt: now,
+  }
+}
+
+function templateSelectionEqual(a: AutopilotTemplateSelection, b: AutopilotTemplateSelection) {
+  if (a.status !== b.status) return false
+  if (a.id !== b.id) return false
+  if (a.name !== b.name) return false
+  if (a.stack !== b.stack) return false
+  if (a.tier !== b.tier) return false
+  if (a.decidedBy !== b.decidedBy) return false
+  const aIDs = (a.candidates ?? []).map((item) => item.id).join("|")
+  const bIDs = (b.candidates ?? []).map((item) => item.id).join("|")
+  return aIDs === bIDs
+}
+
 export function bindAutopilotSession(run: AutopilotRun, sessionID: string, now = new Date().toISOString()) {
   if (run.sessionID === sessionID) return run
   return addAutopilotEvent(
@@ -494,6 +539,7 @@ export function autopilotContextFromRun(run: AutopilotRun): AutopilotContextPayl
       at: event.at,
     })),
     safeguards: autopilotSafeguardsFromRun(run).slice(),
+    templateSelection: run.templateSelection ? { ...run.templateSelection } : undefined,
   }
 }
 
@@ -578,6 +624,109 @@ export function autopilotWorkerPrompt(run: AutopilotContextPayload) {
 
 export function autopilotGoalNeedsTemplate(goal: string) {
   return /\b(template|templates|theme|starter|clone|style|design reference|inspiration)\b/i.test(goal)
+}
+
+export type AutopilotTemplateMatch = {
+  template: AutopilotTemplateSummary
+  score: number
+  reasons: string[]
+}
+
+const TEMPLATE_TOKEN_STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "build",
+  "create",
+  "make",
+  "add",
+  "use",
+  "using",
+  "template",
+  "templates",
+  "starter",
+  "theme",
+  "design",
+  "based",
+  "inspired",
+  "like",
+  "clone",
+  "reference",
+  "inspiration",
+  "style",
+])
+
+function tokenizeAutopilotGoal(goal: string) {
+  const tokens = new Set<string>()
+  for (const raw of goal.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (raw.length < 3) continue
+    if (TEMPLATE_TOKEN_STOPWORDS.has(raw)) continue
+    tokens.add(raw)
+  }
+  return tokens
+}
+
+function matchTextTokens(text: string | undefined, tokens: Set<string>) {
+  if (!text) return [] as string[]
+  const lower = text.toLowerCase()
+  const matched: string[] = []
+  for (const token of tokens) {
+    if (lower.includes(token)) matched.push(token)
+  }
+  return matched
+}
+
+export function matchAutopilotTemplates(
+  goal: string,
+  templates: AutopilotTemplateSummary[],
+  limit = 3,
+): AutopilotTemplateMatch[] {
+  const tokens = tokenizeAutopilotGoal(goal)
+  if (!tokens.size || !templates.length) return []
+  const tagText = (template: AutopilotTemplateSummary) => template.tags?.join(" ") ?? ""
+  const partsText = (template: AutopilotTemplateSummary) => template.parts?.join(" ") ?? ""
+
+  return templates
+    .map((template): AutopilotTemplateMatch => {
+      const reasons: string[] = []
+      let score = 0
+
+      const nameMatches = matchTextTokens(template.name, tokens)
+      if (nameMatches.length) {
+        score += nameMatches.length * 3
+        reasons.push(`name: ${nameMatches.join(", ")}`)
+      }
+
+      const descMatches = matchTextTokens(template.description, tokens)
+      if (descMatches.length) {
+        score += descMatches.length * 2
+        reasons.push(`description: ${descMatches.join(", ")}`)
+      }
+
+      const tagMatches = matchTextTokens(tagText(template), tokens)
+      if (tagMatches.length) {
+        score += tagMatches.length * 2
+        reasons.push(`tags: ${tagMatches.join(", ")}`)
+      }
+
+      const partsMatches = matchTextTokens(partsText(template), tokens)
+      if (partsMatches.length) {
+        score += partsMatches.length
+        reasons.push(`parts: ${partsMatches.join(", ")}`)
+      }
+
+      if (template.stack && tokens.has(template.stack.toLowerCase())) {
+        score += 1
+        reasons.push(`stack: ${template.stack}`)
+      }
+
+      return { template, score, reasons }
+    })
+    .filter((match) => match.score > 0)
+    .sort((a, b) => b.score - a.score || a.template.name.localeCompare(b.template.name))
+    .slice(0, limit)
 }
 
 export function autopilotGoalNeedsWorkflow(goal: string) {
@@ -765,14 +914,27 @@ function autopilotSafeguardsFromRun(run: AutopilotContextPayload) {
 
 function runHeader(run: AutopilotContextPayload) {
   const taskTitles = autopilotTaskItemsFromRun(run).map((task) => task.title)
-  return [
+  const lines = [
     `Run ID: ${run.runID}`,
     `Overall goal: ${run.goal}`,
     ...(taskTitles.length ? ["Task queue:", ...taskTitles.map((task, index) => `${index + 1}. ${task}`)] : []),
     `Workspace: ${run.workspace}`,
     `Selected agent: ${run.agent ?? "current"}`,
     `Selected model: ${formatAutopilotModel(run.model)}`,
-  ].join("\n")
+  ]
+  const selection = run.templateSelection
+  if (selection && selection.id && (selection.status === "chosen" || selection.status === "applying")) {
+    const by = selection.decidedBy === "user" ? "user-picked" : selection.decidedBy === "planner" ? "planner-picked" : "autopilot-picked"
+    lines.push(
+      `Pre-selected template: ${selection.name ?? selection.id} (${selection.id}, ${by})`,
+      selection.decidedBy === "user"
+        ? "Respect this template unless the user's goal explicitly says otherwise."
+        : "You may swap this template if a different one fits the goal better; emit a PADDIE_TEMPLATE_ID line to record the change.",
+    )
+  } else if (selection && selection.status === "skipped") {
+    lines.push("Template selection: skipped by the user. Do not emit PADDIE_TEMPLATE_ID.")
+  }
+  return lines.join("\n")
 }
 
 function phaseInstructions() {
