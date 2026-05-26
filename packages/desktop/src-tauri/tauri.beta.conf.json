@@ -32,7 +32,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["paddiestudiobeta"]
+        "schemes": ["paddiestudiobeta", "paddiestudio"]
       }
     },
     "updater": {

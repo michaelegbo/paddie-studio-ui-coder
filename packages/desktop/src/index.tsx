@@ -48,14 +48,16 @@ void initI18n()
 
 let update: Update | null = null
 
-const deepLinkEvent = "paddiestudio:deep-link"
+const deepLinkEvents = ["paddiestudio:deep-link", "opencode:deep-link"] as const
 
 const emitDeepLinks = (urls: string[]) => {
   if (urls.length === 0) return
   window.__OPENCODE__ ??= {}
   const pending = window.__OPENCODE__.deepLinks ?? []
   window.__OPENCODE__.deepLinks = [...pending, ...urls]
-  window.dispatchEvent(new CustomEvent(deepLinkEvent, { detail: { urls } }))
+  deepLinkEvents.forEach((event) => {
+    window.dispatchEvent(new CustomEvent(event, { detail: { urls } }))
+  })
 }
 
 const listenForDeepLinks = async () => {

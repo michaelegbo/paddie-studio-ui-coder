@@ -311,11 +311,12 @@ pub fn run() {
         .output();
 
     let mut builder = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // Focus existing window when another instance is launched
             if let Some(window) = app.get_webview_window(MainWindow::LABEL) {
                 let _ = window.set_focus();
                 let _ = window.unminimize();
+                emit_deep_links(&window, extract_deep_link_urls(&args));
             }
         }))
         .plugin(tauri_plugin_deep_link::init())
@@ -555,6 +556,43 @@ fn cleanup_legacy_deep_links(app: &tauri::AppHandle) {
             app.deep_link().unregister("paddiestudio").ok();
         }
     }
+}
+
+fn extract_deep_link_urls(args: &[String]) -> Vec<String> {
+    args.iter()
+        .map(|arg| arg.trim())
+        .filter(|arg| {
+            ["opencode://", "paddiestudio://", "paddiestudiobeta://", "paddiestudiodev://"]
+                .iter()
+                .any(|scheme| arg.starts_with(scheme))
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+fn emit_deep_links(window: &tauri::WebviewWindow, urls: Vec<String>) {
+    if urls.is_empty() {
+        return;
+    }
+
+    let Ok(urls) = serde_json::to_string(&urls) else {
+        return;
+    };
+
+    let script = format!(
+        r#"
+(() => {{
+  const urls = {urls};
+  window.__OPENCODE__ ??= {{}};
+  const pending = window.__OPENCODE__.deepLinks ?? [];
+  window.__OPENCODE__.deepLinks = [...pending, ...urls];
+  for (const event of ["paddiestudio:deep-link", "opencode:deep-link"]) {{
+    window.dispatchEvent(new CustomEvent(event, {{ detail: {{ urls }} }}));
+  }}
+}})();
+"#
+    );
+    let _ = window.eval(&script);
 }
 
 fn spawn_cli_sync_task(app: AppHandle) {
