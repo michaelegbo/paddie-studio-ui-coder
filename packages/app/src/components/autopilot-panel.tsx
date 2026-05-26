@@ -23,6 +23,7 @@ import {
   createAutopilotTaskItems,
   createAutopilotRun,
   formatAutopilotModel,
+  matchAutopilotTemplates,
   migrateAutopilotStore,
   nativePlannerPrompt,
   nativeVerificationPrompt,
@@ -33,6 +34,7 @@ import {
   selectedWorkflowFromText,
   setAutopilotPlanStatuses,
   setAutopilotTaskStatuses,
+  setAutopilotTemplateSelection,
   transitionAutopilotRun,
   updateAutopilotTaskQueue,
   type AutopilotEvent,
@@ -42,6 +44,8 @@ import {
   type AutopilotRunStatus,
   type AutopilotStepStatus,
   type AutopilotTemplateContext,
+  type AutopilotTemplateSelection,
+  type AutopilotTemplateSummary,
   type AutopilotWorkflowContext,
 } from "@/autopilot/helpers"
 import { createBurstDetector } from "@/autopilot/run-guard"
@@ -300,6 +304,95 @@ export function AutopilotPanel(props: {
     }
   }
   const finishedRunCount = createMemo(() => runs().filter((item) => isFinishedRun(item.status)).length)
+
+  const templateSelection = createMemo(() => run()?.templateSelection)
+  const templateSelectionStatusLabel = (status: AutopilotTemplateSelection["status"]) => {
+    if (status === "applying") return "Applying"
+    if (status === "applied") return "Applied"
+    if (status === "skipped") return "Skipped"
+    if (status === "suggesting") return "Suggesting"
+    return "Selected"
+  }
+  const templateSelectionStatusClass = (status: AutopilotTemplateSelection["status"]) => {
+    if (status === "applied") return "border-green-500/35 bg-green-500/10 text-green-300"
+    if (status === "applying") return "border-blue-500/35 bg-blue-500/10 text-blue-300"
+    if (status === "skipped") return "border-border-weaker-base bg-background-base text-text-weak"
+    return "border-yellow-500/35 bg-yellow-500/10 text-yellow-200"
+  }
+  const templateSelectionDecidedLabel = (decidedBy: AutopilotTemplateSelection["decidedBy"]) => {
+    if (decidedBy === "user") return "User pick"
+    if (decidedBy === "planner") return "Planner pick"
+    if (decidedBy === "autopilot") return "Autopilot pick"
+    return "Selection"
+  }
+  const applyTemplatePick = (
+    pick: { kind: "template"; template: AutopilotTemplateSummary } | { kind: "auto" } | { kind: "skip" },
+  ) => {
+    const current = run()
+    if (!current) return
+    const status = current.status
+    const isLocked = status === "completed" || status === "stopped"
+    if (isLocked) {
+      showToast({
+        variant: "error",
+        title: "Run already finished",
+        description: "Start a new run to pick a different template.",
+      })
+      return
+    }
+    const selection = current.templateSelection
+    if (pick.kind === "skip") {
+      const next = setAutopilotTemplateSelection(current, {
+        status: "skipped",
+        decidedBy: "user",
+        candidates: selection?.candidates,
+      })
+      if (next === current) return
+      const withEvent = addAutopilotEvent(next, {
+        id: `${current.runID}:template-skipped:${Date.now().toString(36)}`,
+        source: "template",
+        title: "Template selection skipped",
+        body: "User opted out of using a Paddie template for this run.",
+        at: new Date().toISOString(),
+      })
+      setRun(withEvent)
+      return
+    }
+    if (pick.kind === "auto") {
+      const next = setAutopilotTemplateSelection(current, undefined)
+      if (next === current) return
+      const withEvent = addAutopilotEvent(next, {
+        id: `${current.runID}:template-auto:${Date.now().toString(36)}`,
+        source: "template",
+        title: "Template selection delegated",
+        body: "User delegated the template pick back to Autopilot/planner.",
+        at: new Date().toISOString(),
+      })
+      setRun(withEvent)
+      return
+    }
+    const template = pick.template
+    const nextStatus: AutopilotTemplateSelection["status"] =
+      selection?.status === "applied" || selection?.status === "applying" ? "applying" : "chosen"
+    const next = setAutopilotTemplateSelection(current, {
+      status: nextStatus,
+      id: template.id,
+      name: template.name,
+      stack: template.stack,
+      tier: template.tier,
+      decidedBy: "user",
+      candidates: selection?.candidates,
+    })
+    if (next === current) return
+    const withEvent = addAutopilotEvent(next, {
+      id: `${current.runID}:template-user-pick:${template.id}`,
+      source: "template",
+      title: "Template picked by user",
+      body: `Switched to "${template.name}" for this run.`,
+      at: new Date().toISOString(),
+    })
+    setRun(withEvent)
+  }
 
   const model = createMemo(() => {
     const current = local.model.current()
@@ -968,6 +1061,44 @@ export function AutopilotPanel(props: {
         { gather: "done", plan: "active" },
       )
 
+      if (
+        autopilotGoalNeedsTemplate(current.goal) &&
+        resources.templateAccess === "available" &&
+        resources.templates &&
+        resources.templates.length > 0
+      ) {
+        const matches = matchAutopilotTemplates(current.goal, resources.templates)
+        if (matches.length) {
+          const top = matches[0]!.template
+          current = setAutopilotTemplateSelection(runByID(current.runID) ?? current, {
+            status: "chosen",
+            id: top.id,
+            name: top.name,
+            stack: top.stack,
+            tier: top.tier,
+            decidedBy: "autopilot",
+            candidates: matches.map((match) => match.template),
+          })
+          setRun(current, select)
+          current = addRunEventFor(
+            current,
+            {
+              id: `${current.runID}:template-suggested`,
+              source: "template",
+              title: "Template selected",
+              body:
+                matches.length > 1
+                  ? `Autopilot picked "${top.name}". ${matches.length - 1} other candidate${matches.length - 1 > 1 ? "s" : ""} ranked below.`
+                  : `Autopilot picked "${top.name}" based on your goal.`,
+              detail: matches
+                .map((match) => `- ${match.template.name} (${match.score} pts): ${match.reasons.join("; ") || "no reasons"}`)
+                .join("\n"),
+              at: new Date().toISOString(),
+            },
+          )
+        }
+      }
+
       const created = await client.session.create({
         title: `Paddie Autopilot - ${current.goal.slice(0, 80)}`,
         agent: currentAgent,
@@ -1014,12 +1145,56 @@ export function AutopilotPanel(props: {
         current = updateAutopilotTaskQueue(runByID(current.runID) ?? current, plannedTasks)
         setRun(current, select)
       }
-      const selectedTemplate = selectedTemplateFromText(plannerOutput)
+      const plannerTemplatePick = selectedTemplateFromText(plannerOutput)
       const selectedWorkflow = selectedWorkflowFromText(plannerOutput)
+
+      const autopilotSelection = current.templateSelection
+      const effectiveTemplateSelector: { id: string; name?: string } | undefined = (() => {
+        if (plannerTemplatePick) return plannerTemplatePick
+        if (autopilotSelection?.id) return { id: autopilotSelection.id, name: autopilotSelection.name }
+        return undefined
+      })()
+
+      if (
+        plannerTemplatePick &&
+        autopilotSelection &&
+        autopilotSelection.id !== plannerTemplatePick.id
+      ) {
+        current = setAutopilotTemplateSelection(runByID(current.runID) ?? current, {
+          ...autopilotSelection,
+          id: plannerTemplatePick.id,
+          name: plannerTemplatePick.name ?? plannerTemplatePick.id,
+          decidedBy: "planner",
+          status: "chosen",
+        })
+        setRun(current, select)
+        current = addRunEventFor(
+          current,
+          {
+            id: `${current.runID}:template-planner-override:${plannerTemplatePick.id}`,
+            source: "template",
+            title: "Planner overrode the template pick",
+            body: `Planner chose "${plannerTemplatePick.name ?? plannerTemplatePick.id}" instead of the Autopilot pre-pick.`,
+            at: new Date().toISOString(),
+          },
+        )
+      } else if (
+        plannerTemplatePick &&
+        !autopilotSelection
+      ) {
+        current = setAutopilotTemplateSelection(runByID(current.runID) ?? current, {
+          status: "chosen",
+          id: plannerTemplatePick.id,
+          name: plannerTemplatePick.name ?? plannerTemplatePick.id,
+          decidedBy: "planner",
+        })
+        setRun(current, select)
+      }
+
       const enriched = {
         ...resources,
         plannerOutput,
-        selectedTemplate: await loadSelectedTemplate(selectedTemplate).catch((err) => {
+        selectedTemplate: await loadSelectedTemplate(effectiveTemplateSelector).catch((err) => {
           addResourceError("template", current!, err)
           return undefined
         }),
@@ -1031,6 +1206,15 @@ export function AutopilotPanel(props: {
 
       current = runByID(current.runID) ?? current
       if (!current || current.status === "stopped") return
+
+      if (current.templateSelection && current.templateSelection.status === "chosen" && current.templateSelection.id) {
+        current = setAutopilotTemplateSelection(current, {
+          ...current.templateSelection,
+          status: "applying",
+        })
+        setRun(current, select)
+      }
+
       const workerBefore = assistantMessageCount(workspace, sessionID)
       await submitWorkerPrompt(
         current,
@@ -1044,6 +1228,24 @@ export function AutopilotPanel(props: {
 
       current = runByID(current.runID) ?? current
       if (!current || current.status === "stopped") return
+
+      const applyingSelection = current.templateSelection
+      if (applyingSelection && applyingSelection.status === "applying" && applyingSelection.id) {
+        const applied: AutopilotTemplateSelection = { ...applyingSelection, status: "applied" }
+        current = setAutopilotTemplateSelection(current, applied)
+        setRun(current, select)
+        current = addRunEventFor(
+          current,
+          {
+            id: `${current.runID}:template-applied:${applied.id}`,
+            source: "template",
+            title: "Template applied",
+            body: `"${applied.name ?? applied.id}" finished applying.`,
+            at: new Date().toISOString(),
+          },
+        )
+      }
+
       const verifyBefore = assistantMessageCount(workspace, sessionID)
       await submitWorkerPrompt(
         current,
@@ -1808,6 +2010,161 @@ export function AutopilotPanel(props: {
     </div>
   )
 
+  const openTemplatePicker = () => {
+    const selection = templateSelection()
+    const candidates = selection?.candidates ?? []
+    if (!candidates.length) {
+      showToast({
+        title: "No template candidates yet",
+        description: "Autopilot is still gathering candidates. Try again once the run has started planning.",
+      })
+      return
+    }
+    const handlePick = (template: AutopilotTemplateSummary) => {
+      applyTemplatePick({ kind: "template", template })
+      dialog.close()
+    }
+    const handleAuto = () => {
+      applyTemplatePick({ kind: "auto" })
+      dialog.close()
+    }
+    const handleSkip = () => {
+      applyTemplatePick({ kind: "skip" })
+      dialog.close()
+    }
+    dialog.show(
+      () => <TemplatePickerDialog candidates={candidates} currentID={selection?.id} onPick={handlePick} onAuto={handleAuto} onSkip={handleSkip} />,
+      () => undefined,
+    )
+  }
+
+  const TemplatePickerDialog = (props: {
+    candidates: AutopilotTemplateSummary[]
+    currentID: string | undefined
+    onPick: (template: AutopilotTemplateSummary) => void
+    onAuto: () => void
+    onSkip: () => void
+  }) => (
+    <div class="w-[480px] max-w-[92vw] rounded-[20px] border border-border-weaker-base bg-surface-base shadow-[0_24px_80px_rgba(0,0,0,0.25)]">
+      <div class="border-b border-border-weaker-base px-5 py-4">
+        <div class="text-15-bold text-text-base">Choose a template</div>
+        <div class="mt-1 text-11-medium text-text-weak">Autopilot ranked these candidates against your goal.</div>
+      </div>
+      <div class="grid gap-2 p-4">
+        <For each={props.candidates}>
+          {(template) => (
+            <button
+              type="button"
+              class={`flex items-start gap-3 rounded-[14px] border px-3 py-3 text-left transition-colors ${
+                props.currentID === template.id
+                  ? "border-blue-500/45 bg-blue-500/[0.08]"
+                  : "border-border-weaker-base bg-background-stronger hover:bg-surface-base-hover"
+              }`}
+              onClick={() => props.onPick(template)}
+            >
+              <div class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-border-weaker-base bg-background-base">
+                <Show when={props.currentID === template.id} fallback={<Icon name="task" class="size-3.5 text-text-weak" />}>
+                  <Icon name="check-small" class="size-4 text-blue-300" />
+                </Show>
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <div class="min-w-0 truncate text-13-bold text-text-base">{template.name}</div>
+                  <Show when={template.stack}>
+                    <span class="rounded-full border border-border-weaker-base bg-background-base px-2 py-0.5 text-10-medium text-text-weak">
+                      {template.stack}
+                    </span>
+                  </Show>
+                  <Show when={template.tier && template.tier !== "free"}>
+                    <span class="rounded-full border border-yellow-500/30 bg-yellow-500/12 px-2 py-0.5 text-10-medium text-yellow-300">
+                      {template.tier}
+                    </span>
+                  </Show>
+                </div>
+                <Show when={template.description}>
+                  <div class="mt-1 line-clamp-2 text-11-medium leading-5 text-text-weak">{template.description}</div>
+                </Show>
+              </div>
+            </button>
+          )}
+        </For>
+      </div>
+      <div class="flex flex-wrap items-center justify-end gap-2 border-t border-border-weaker-base px-4 py-3">
+        <Button variant="ghost" class="h-9 px-3 text-12-medium" onClick={props.onSkip}>
+          Skip templates
+        </Button>
+        <Button variant="ghost" class="h-9 px-3 text-12-medium" onClick={props.onAuto}>
+          Let Autopilot decide
+        </Button>
+        <Button variant="ghost" class="h-9 px-3 text-12-medium" onClick={() => dialog.close()}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  )
+
+  const TemplateSelectionCard = () => (
+    <Show when={templateSelection()}>
+      {(selection) => (
+        <div class="rounded-[16px] border border-border-weaker-base bg-background-stronger/80 p-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <Icon name="checklist" class="size-3.5 text-icon-info-base" />
+              <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Template</div>
+              <span class={`rounded-full border px-2 py-0.5 text-10-medium ${templateSelectionStatusClass(selection().status)}`}>
+                {templateSelectionStatusLabel(selection().status)}
+              </span>
+              <Show when={selection().decidedBy}>
+                <span class="rounded-full border border-border-weaker-base bg-background-base px-2 py-0.5 text-10-medium text-text-weak">
+                  {templateSelectionDecidedLabel(selection().decidedBy)}
+                </span>
+              </Show>
+            </div>
+            <Show when={(selection().candidates?.length ?? 0) > 0}>
+              <Button variant="ghost" class="h-7 px-3 text-11-medium" onClick={openTemplatePicker}>
+                Change
+              </Button>
+            </Show>
+          </div>
+          <Show
+            when={selection().status !== "skipped"}
+            fallback={
+              <div class="mt-2 text-12-medium text-text-weak">
+                Templates are off for this run. Click Change to bring one back in.
+              </div>
+            }
+          >
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <div class="min-w-0 truncate text-15-bold text-text-base">{selection().name ?? selection().id ?? "Unknown template"}</div>
+              <Show when={selection().stack}>
+                <span class="rounded-full border border-border-weaker-base bg-background-base px-2 py-0.5 text-10-medium text-text-weak">
+                  {selection().stack}
+                </span>
+              </Show>
+              <Show when={selection().tier && selection().tier !== "free"}>
+                <span class="rounded-full border border-yellow-500/30 bg-yellow-500/12 px-2 py-0.5 text-10-medium text-yellow-300">
+                  {selection().tier}
+                </span>
+              </Show>
+            </div>
+            <Show when={selection().status === "applying"}>
+              <div class="mt-2 flex items-center gap-2 text-11-medium text-blue-300">
+                <span class="size-2 animate-pulse rounded-full bg-blue-400" />
+                Applying template files into the worker session…
+              </div>
+            </Show>
+            <Show when={selection().status === "applied"}>
+              <div class="mt-2 flex items-center gap-2 text-11-medium text-green-300">
+                <Icon name="check-small" class="size-3.5" />
+                Template applied. Worker is verifying.
+              </div>
+            </Show>
+          </Show>
+        </div>
+      )}
+    </Show>
+  )
+
   const ActivityPreview = () => (
     <div class="rounded-[18px] border border-dashed border-border-weaker-base bg-surface-base p-5">
       <Show
@@ -2259,6 +2616,8 @@ export function AutopilotPanel(props: {
           <RunSwitcher />
 
           <LiveRunStatus />
+
+          <TemplateSelectionCard />
 
           <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
             <ActivityTimeline />

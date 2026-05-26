@@ -22,10 +22,12 @@ import {
   nativeWorkerPrompt,
   normalizeAutopilotGoal,
   normalizeAutopilotWorkspaces,
+  matchAutopilotTemplates,
   selectedTemplateFromText,
   selectedWorkflowFromText,
   setAutopilotPlanStatuses,
   setAutopilotTaskStatuses,
+  setAutopilotTemplateSelection,
   transitionAutopilotRun,
   updateAutopilotTaskQueue,
 } from "./helpers"
@@ -480,5 +482,87 @@ Changed files: app.tsx`),
     const tasksEvent = run.events.find((event) => event.id === "run-large-goal:tasks")
     expect(tasksEvent).toBeDefined()
     expect(tasksEvent!.body).toContain("[Autopilot output truncated.]")
+  })
+
+  test("matchAutopilotTemplates ranks by goal keyword overlap", () => {
+    const templates = [
+      { id: "tpl_crm", name: "CRM Dashboard", description: "Sales pipeline and contacts", stack: "react", tags: ["dashboard", "sales"] },
+      { id: "tpl_blog", name: "Personal Blog", description: "Markdown blog with comments", stack: "next", tags: ["content", "markdown"] },
+      { id: "tpl_shop", name: "Storefront", description: "E-commerce storefront with cart", stack: "react", tags: ["commerce", "shop"] },
+    ]
+    const matches = matchAutopilotTemplates("Build a sales pipeline dashboard for tracking deals", templates)
+    expect(matches.length).toBeGreaterThan(0)
+    expect(matches[0]!.template.id).toBe("tpl_crm")
+    expect(matches[0]!.reasons.some((reason) => reason.includes("name") || reason.includes("description") || reason.includes("tags"))).toBe(true)
+  })
+
+  test("matchAutopilotTemplates filters out matchless templates and caps the result", () => {
+    const templates = Array.from({ length: 10 }, (_, index) => ({
+      id: `tpl_${index}`,
+      name: `Template ${index}`,
+      description: `Random template ${index}`,
+      stack: "react",
+      tags: [`tag${index}`],
+    }))
+    templates.unshift({ id: "tpl_match", name: "Invoice Dashboard", description: "Track invoices and clients", stack: "react", tags: ["invoice", "billing"] })
+
+    const matches = matchAutopilotTemplates("invoice dashboard for tracking clients", templates, 2)
+    expect(matches).toHaveLength(1)
+    expect(matches[0]!.template.id).toBe("tpl_match")
+  })
+
+  test("matchAutopilotTemplates returns nothing for unrelated goals", () => {
+    const templates = [
+      { id: "tpl_crm", name: "CRM", description: "Sales tracker", stack: "react", tags: ["dashboard"] },
+    ]
+    expect(matchAutopilotTemplates("write a haiku about clouds", templates)).toEqual([])
+  })
+
+  test("setAutopilotTemplateSelection adds/updates/clears identity-stably", () => {
+    const run = createAutopilotRun({
+      runID: "run-template",
+      now: "2026-05-22T10:00:00.000Z",
+      goal: "Build a dashboard from a template",
+      workspace: "/repo",
+    })
+
+    expect(setAutopilotTemplateSelection(run, undefined)).toBe(run)
+
+    const chosen = setAutopilotTemplateSelection(
+      run,
+      {
+        status: "chosen",
+        id: "tpl_1",
+        name: "Dashboard",
+        decidedBy: "autopilot",
+      },
+      "2026-05-22T10:01:00.000Z",
+    )
+    expect(chosen).not.toBe(run)
+    expect(chosen.templateSelection?.id).toBe("tpl_1")
+
+    const same = setAutopilotTemplateSelection(
+      chosen,
+      {
+        status: "chosen",
+        id: "tpl_1",
+        name: "Dashboard",
+        decidedBy: "autopilot",
+      },
+      "2026-05-22T10:02:00.000Z",
+    )
+    expect(same).toBe(chosen)
+
+    const applied = setAutopilotTemplateSelection(
+      chosen,
+      {
+        status: "applied",
+        id: "tpl_1",
+        name: "Dashboard",
+        decidedBy: "autopilot",
+      },
+      "2026-05-22T10:03:00.000Z",
+    )
+    expect(applied.templateSelection?.status).toBe("applied")
   })
 })
