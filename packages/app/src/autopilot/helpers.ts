@@ -135,6 +135,9 @@ const MAX_TEMPLATE_CATALOG = 30
 const MAX_WORKFLOW_CATALOG = 20
 const MAX_RESOURCE_FILE = 24_000
 const MAX_RESOURCE_TOTAL = 90_000
+const MAX_PLANNER_OUTPUT_CONTEXT = 12_000
+const MAX_WORKFLOW_CODE_CONTEXT = 16_000
+const MAX_WORKFLOW_GRAPH_CONTEXT = 16_000
 const MAX_AUTOPILOT_TASKS = 20
 const MAX_AUTOPILOT_WORKSPACES = 8
 
@@ -523,7 +526,7 @@ export function nativeWorkerPrompt(run: AutopilotContextPayload, input?: Autopil
     "",
     phaseInstructions(),
     "",
-    input?.plannerOutput ? `Planner output:\n${input.plannerOutput}` : "",
+    input?.plannerOutput ? `Planner output:\n${truncateAutopilotText(input.plannerOutput, MAX_PLANNER_OUTPUT_CONTEXT)}` : "",
     "",
     resourceContext(input),
   ]
@@ -853,13 +856,14 @@ function workflowCatalog(input?: AutopilotResourceInput) {
 
 function selectedWorkflowContext(workflow: AutopilotWorkflowContext | undefined) {
   if (!workflow) return ""
+  const graph = JSON.stringify({ nodes: workflow.nodes, edges: workflow.edges }, null, 2)
   return [
     `Selected Paddie workflow: ${workflow.name} (${workflow.id})`,
     workflow.description ? `Description: ${workflow.description}` : "",
     `Status: ${workflow.status}`,
     `Webhook URL: ${workflow.webhookUrl}`,
-    `Generated ${workflow.language} client code:\n${workflow.code}`,
-    `Workflow graph JSON:\n${JSON.stringify({ nodes: workflow.nodes, edges: workflow.edges }, null, 2)}`,
+    `Generated ${workflow.language} client code:\n${truncateAutopilotText(workflow.code, MAX_WORKFLOW_CODE_CONTEXT)}`,
+    `Workflow graph JSON:\n${truncateAutopilotText(graph, MAX_WORKFLOW_GRAPH_CONTEXT)}`,
   ]
     .filter(Boolean)
     .join("\n\n")
