@@ -213,7 +213,7 @@ export function createAutopilotRun(input: CreateAutopilotRunInput): AutopilotRun
       id: `${runID}:goal`,
       source: "user",
       title: "Goal accepted",
-      body: goal,
+      body: "Captured.",
       at: now,
     },
     {

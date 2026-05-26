@@ -44,6 +44,7 @@ import {
   type AutopilotTemplateContext,
   type AutopilotWorkflowContext,
 } from "@/autopilot/helpers"
+import { createBurstDetector } from "@/autopilot/run-guard"
 import { DialogSelectDirectory } from "@/components/dialog-select-directory"
 import { useAuth } from "@/context/auth"
 import { useGlobalSync } from "@/context/global-sync"
@@ -128,6 +129,7 @@ export function AutopilotPanel(props: {
     {
       ...Persist.workspace(sdk.directory, "autopilot", ["autopilot.native.v1"]),
       migrate: migrateAutopilotStore,
+      debounceWriteMs: 300,
     },
     createStore<{
       current?: AutopilotRun
@@ -148,16 +150,46 @@ export function AutopilotPanel(props: {
   const run = () => runByID(store.currentRunID) ?? runs()[0]
   const selectedWorkspace = createMemo(() => run()?.workspace ?? targetWorkspaces()[0] ?? sdk.directory)
   const selectedStore = createMemo(() => globalSync.child(selectedWorkspace(), { bootstrap: false })[0])
-  const trippedRuns = new Set<string>()
-  let setRunBurstCount = 0
-  let setRunBurstScheduled = false
+  const [trippedRuns, setTrippedRuns] = createSignal<ReadonlySet<string>>(new Set<string>())
+  const burstDetector = createBurstDetector({ limit: SET_RUN_BURST_LIMIT })
+  const runWakers = new Map<string, Set<() => void>>()
+  const wakeRun = (runID: string) => {
+    const set = runWakers.get(runID)
+    if (!set || !set.size) return
+    const fns = Array.from(set)
+    set.clear()
+    runWakers.delete(runID)
+    for (const fn of fns) {
+      try {
+        fn()
+      } catch {}
+    }
+  }
+  const cancellableDelay = (runID: string, ms: number) =>
+    new Promise<void>((resolve) => {
+      let wake: (() => void) | undefined
+      const timer = window.setTimeout(() => {
+        if (wake) runWakers.get(runID)?.delete(wake)
+        resolve()
+      }, ms)
+      wake = () => {
+        window.clearTimeout(timer)
+        resolve()
+      }
+      let set = runWakers.get(runID)
+      if (!set) {
+        set = new Set()
+        runWakers.set(runID, set)
+      }
+      set.add(wake)
+    })
   const setRun = (next: AutopilotRun | undefined, select = true) => {
     if (!next) {
       setStore("current", undefined)
       setStore("currentRunID", undefined)
       return
     }
-    if (trippedRuns.has(next.runID) && next.status !== "stopped") return
+    if (trippedRuns().has(next.runID) && next.status !== "stopped") return
     const currentRuns = runs()
     const index = currentRuns.findIndex((item) => item.runID === next.runID)
     if (index >= 0 && currentRuns[index] === next) {
@@ -167,21 +199,14 @@ export function AutopilotPanel(props: {
       }
       return
     }
-    setRunBurstCount++
-    if (!setRunBurstScheduled) {
-      setRunBurstScheduled = true
-      queueMicrotask(() => {
-        setRunBurstCount = 0
-        setRunBurstScheduled = false
-      })
-    }
+    const burst = burstDetector.recordAndCheck()
     let writeable = next
-    if (
-      setRunBurstCount > SET_RUN_BURST_LIMIT &&
-      !trippedRuns.has(next.runID) &&
-      next.status !== "stopped"
-    ) {
-      trippedRuns.add(next.runID)
+    if (burst.exceeded && !trippedRuns().has(next.runID) && next.status !== "stopped") {
+      setTrippedRuns((prev) => {
+        const updatedSet = new Set(prev)
+        updatedSet.add(next.runID)
+        return updatedSet
+      })
       const at = new Date().toISOString()
       writeable = transitionAutopilotRun(
         addAutopilotEvent(next, {
@@ -201,12 +226,14 @@ export function AutopilotPanel(props: {
           .catch(() => undefined)
         globalSync.child(next.workspace)[1]("session_status", next.sessionID, { type: "idle" })
       }
+      wakeRun(next.runID)
       showToast({
         variant: "error",
         title: "Autopilot stopped",
         description: "Detected a runaway update loop. The run was stopped so Studio stays responsive.",
       })
     }
+    if (writeable.status === "stopped" || writeable.status === "paused") wakeRun(writeable.runID)
     const writeableIndex = currentRuns.findIndex((item) => item.runID === writeable.runID)
     const updated =
       writeableIndex < 0
@@ -238,7 +265,12 @@ export function AutopilotPanel(props: {
         .catch(() => undefined)
       globalSync.child(target.workspace)[1]("session_status", target.sessionID, { type: "idle" })
     }
-    trippedRuns.delete(runID)
+    setTrippedRuns((prev) => {
+      if (!prev.has(runID)) return prev
+      const next = new Set(prev)
+      next.delete(runID)
+      return next
+    })
     const remaining = runs().filter((item) => item.runID !== runID)
     setStore("runs", remaining)
     if (store.currentRunID === runID) {
@@ -436,6 +468,24 @@ export function AutopilotPanel(props: {
     return plan.find((step) => step.status === "active") ?? plan.find((step) => step.status === "pending")
   })
   const handoffSummary = createMemo(() => run()?.events.find((event) => event.id.endsWith(":completed"))?.body)
+
+  if (typeof window !== "undefined") {
+    const abortLiveRuns = () => {
+      for (const item of runs()) {
+        if (!item.sessionID) continue
+        if (item.status !== "running" && item.status !== "paused") continue
+        void clientForWorkspace(item.workspace)
+          .session.abort({ sessionID: item.sessionID })
+          .catch(() => undefined)
+      }
+    }
+    window.addEventListener("pagehide", abortLiveRuns)
+    window.addEventListener("beforeunload", abortLiveRuns)
+    onCleanup(() => {
+      window.removeEventListener("pagehide", abortLiveRuns)
+      window.removeEventListener("beforeunload", abortLiveRuns)
+    })
+  }
 
   createEffect(() => {
     if (store.runs?.length || !store.current) return
@@ -792,14 +842,14 @@ export function AutopilotPanel(props: {
         }
         lastNoticeAt = elapsed
       }
-      await delay(WAIT_INTERVAL_MS)
+      await cancellableDelay(runID, WAIT_INTERVAL_MS)
     }
     throw new Error(`${label} did not finish before the ${Math.round(timeout / 60_000)} minute timeout.`)
   }
 
   const waitForRunnable = async (runID: string) => {
     while (runByID(runID)?.status === "paused") {
-      await delay(WAIT_INTERVAL_MS)
+      await cancellableDelay(runID, WAIT_INTERVAL_MS)
     }
     const current = runByID(runID)
     if (!current || current.runID !== runID || current.status === "stopped") throw new Error("Autopilot run stopped.")
@@ -1074,6 +1124,7 @@ export function AutopilotPanel(props: {
       void clientForWorkspace(current.workspace).session.abort({ sessionID: current.sessionID }).catch(() => undefined)
       globalSync.child(current.workspace)[1]("session_status", current.sessionID, { type: "idle" })
     }
+    wakeRun(current.runID)
     setRun(transitionAutopilotRun(current, nextStatus))
   }
 
@@ -1436,6 +1487,12 @@ export function AutopilotPanel(props: {
                     {item.status}
                   </span>
                 </div>
+                <Show when={trippedRuns().has(item.runID)}>
+                  <div class="mt-1.5 inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-10-medium text-amber-200">
+                    <Icon name="warning" class="size-3" />
+                    Safeguard stopped
+                  </div>
+                </Show>
                 <div class="mt-1 truncate text-11-medium text-text-weak">{item.goal}</div>
                 <div class="mt-2 flex items-center justify-between gap-2 text-10-medium text-text-weak">
                   <span class="truncate">{item.sessionID ?? "No worker yet"}</span>

@@ -1,7 +1,7 @@
 import { Platform, usePlatform } from "@/context/platform"
 import { makePersisted, type AsyncStorage, type SyncStorage } from "@solid-primitives/storage"
 import { checksum } from "@opencode-ai/core/util/encode"
-import { createResource, type Accessor } from "solid-js"
+import { createResource, getOwner, onCleanup, type Accessor } from "solid-js"
 import type { SetStoreFunction, Store } from "solid-js/store"
 import { pathKey } from "@/utils/path-key"
 
@@ -19,6 +19,69 @@ type PersistTarget = {
   key: string
   legacy?: string[]
   migrate?: (value: unknown) => unknown
+  debounceWriteMs?: number
+}
+
+const debounceFlushers = new Set<() => void>()
+
+if (typeof window !== "undefined") {
+  const flushAll = () => {
+    for (const fn of debounceFlushers) {
+      try {
+        fn()
+      } catch {}
+    }
+  }
+  window.addEventListener("pagehide", flushAll)
+  window.addEventListener("beforeunload", flushAll)
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushAll()
+  })
+}
+
+function debounceSyncStorage(base: SyncStorage, delayMs: number) {
+  const pendingSet = new Map<string, string>()
+  const pendingRemove = new Set<string>()
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  const flush = () => {
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      timer = undefined
+    }
+    for (const key of pendingRemove) base.removeItem(key)
+    pendingRemove.clear()
+    for (const [key, value] of pendingSet) base.setItem(key, value)
+    pendingSet.clear()
+  }
+
+  const schedule = () => {
+    if (timer !== undefined) return
+    timer = setTimeout(() => {
+      timer = undefined
+      flush()
+    }, delayMs)
+  }
+
+  const storage: SyncStorage = {
+    getItem(key) {
+      if (pendingRemove.has(key)) return null
+      if (pendingSet.has(key)) return pendingSet.get(key)!
+      return base.getItem(key)
+    },
+    setItem(key, value) {
+      pendingSet.set(key, value)
+      pendingRemove.delete(key)
+      schedule()
+    },
+    removeItem(key) {
+      pendingSet.delete(key)
+      pendingRemove.add(key)
+      schedule()
+    },
+  }
+
+  return { storage, flush }
 }
 
 const LEGACY_STORAGE = "default.dat"
@@ -532,12 +595,26 @@ export function persisted<T>(
       const legacyStore = legacyStorage as SyncStorage
       const legacyStores = legacyStorageNames.map(localStorageWithPrefix)
 
+      const debounceMs = config.debounceWriteMs ?? 0
+      const wrappedWrites = debounceMs > 0 ? debounceSyncStorage(current, debounceMs) : undefined
+      if (wrappedWrites) {
+        debounceFlushers.add(wrappedWrites.flush)
+        if (getOwner()) {
+          onCleanup(() => {
+            wrappedWrites.flush()
+            debounceFlushers.delete(wrappedWrites.flush)
+          })
+        }
+      }
+
+      const writer: SyncStorage = wrappedWrites?.storage ?? current
+
       const api: SyncStorage = {
         getItem: (key) => {
-          const value = readCurrent({ storage: current, key, defaults, migrate: config.migrate })
+          const value = readCurrent({ storage: writer, key, defaults, migrate: config.migrate })
           if (value !== undefined) return value
           return migrateLegacy({
-            current,
+            current: writer,
             legacyStore,
             stores: legacyStores,
             keys: legacy,
@@ -547,10 +624,10 @@ export function persisted<T>(
           })
         },
         setItem: (key, value) => {
-          current.setItem(key, value)
+          writer.setItem(key, value)
         },
         removeItem: (key) => {
-          current.removeItem(key)
+          writer.removeItem(key)
         },
       }
 
