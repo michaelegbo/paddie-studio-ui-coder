@@ -162,6 +162,35 @@ describe("autopilot helpers", () => {
     expect(prompt).toContain("Generated javascript client code")
   })
 
+  test("bounds large planner and workflow context in native prompts", () => {
+    const run = autopilotContextFromRun(
+      createAutopilotRun({
+        runID: "run-large-context",
+        now: "2026-05-22T10:00:00.000Z",
+        goal: "Use my workflow",
+        workspace: "/repo",
+      }),
+    )
+    const prompt = nativeWorkerPrompt(run, {
+      plannerOutput: "planner ".repeat(5_000),
+      selectedWorkflow: {
+        id: "flow_large",
+        name: "Large flow",
+        status: "active",
+        nodeCount: 1_000,
+        edgeCount: 999,
+        language: "javascript",
+        code: "export const value = 1\n".repeat(2_000),
+        webhookUrl: "https://api.paddie.io/webhook",
+        nodes: Array.from({ length: 400 }, (_, index) => ({ id: `n${index}`, type: "step", name: `Node ${index}` })),
+        edges: Array.from({ length: 399 }, (_, index) => ({ id: `e${index}`, source: `n${index}`, target: `n${index + 1}` })),
+      },
+    })
+
+    expect(prompt).toContain("[Autopilot output truncated.]")
+    expect(prompt.length).toBeLessThan(60_000)
+  })
+
   test("detects selected template and workflow markers", () => {
     expect(selectedTemplateFromText("PADDIE_TEMPLATE_ID: tpl_123\nPADDIE_TEMPLATE_NAME: Dashboard")).toEqual({
       id: "tpl_123",

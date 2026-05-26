@@ -100,6 +100,9 @@ const RESOURCE_TIMEOUT_MS = 15 * 1000
 const WAIT_INTERVAL_MS = 1_200
 const WAIT_NOTICE_MS = 20 * 1000
 const WAIT_NOTICE_INTERVAL_MS = 45 * 1000
+const MAX_WORKER_TEXT = 18_000
+const MAX_WORKER_PART_TEXT = 4_000
+const MAX_WORKER_EVENT_DETAIL = 12_000
 
 export function AutopilotPanel(props: {
   chatHidden?: boolean
@@ -689,18 +692,32 @@ export function AutopilotPanel(props: {
   const assistantMessageCount = (workspace: string, sessionID: string) =>
     (globalSync.child(workspace, { bootstrap: false })[0].message[sessionID] ?? []).filter((message) => message.role === "assistant").length
 
-  const workerPlainText = (workspace: string, sessionID: string) => {
+  const workerPlainText = (
+    workspace: string,
+    sessionID: string,
+    options?: {
+      assistantStart?: number
+      includeToolOutput?: boolean
+      max?: number
+    },
+  ) => {
     const workspaceStore = globalSync.child(workspace, { bootstrap: false })[0]
-    return (workspaceStore.message[sessionID] ?? [])
-      .filter((message) => message.role === "assistant")
-      .flatMap((message) => workspaceStore.part[message.id] ?? [])
-      .flatMap((part) => {
-        if (part.type === "text" || part.type === "reasoning") return [part.text]
-        if (part.type === "tool" && part.state.status === "completed") return [part.state.output]
-        if (part.type === "tool" && part.state.status === "error") return [part.state.error]
-        return []
-      })
-      .join("\n\n")
+    return trimWorkerText(
+      (workspaceStore.message[sessionID] ?? [])
+        .filter((message) => message.role === "assistant")
+        .slice(options?.assistantStart ?? 0)
+        .flatMap((message) => workspaceStore.part[message.id] ?? [])
+        .flatMap((part) => {
+          if (part.type === "text" || part.type === "reasoning") return [part.text]
+          if (!options?.includeToolOutput) return []
+          if (part.type === "tool" && part.state.status === "completed") return [part.state.output]
+          if (part.type === "tool" && part.state.status === "error") return [part.state.error]
+          return []
+        })
+        .map((value) => trimWorkerText(value, MAX_WORKER_PART_TEXT))
+        .join("\n\n"),
+      options?.max ?? MAX_WORKER_TEXT,
+    )
   }
 
   const clientForWorkspace = (workspace: string) =>
@@ -825,7 +842,7 @@ export function AutopilotPanel(props: {
       )
       await waitForIdle(current.runID, workspace, sessionID, plannerBefore, "Planning", "plan", PLANNER_TIMEOUT_MS)
 
-      const plannerOutput = workerPlainText(workspace, sessionID)
+      const plannerOutput = workerPlainText(workspace, sessionID, { assistantStart: plannerBefore })
       const plannedTasks = autopilotTaskQueueFromText(plannerOutput)
       if (plannedTasks.length) {
         current = updateAutopilotTaskQueue(runByID(current.runID) ?? current, plannedTasks)
@@ -874,7 +891,7 @@ export function AutopilotPanel(props: {
 
       current = runByID(current.runID) ?? current
       if (!current || current.status === "stopped") return
-      const summary = finalSummary(workspace, sessionID)
+      const summary = finalSummary(workspace, sessionID, verifyBefore)
       current = addAutopilotEvent(current, {
         id: `${current.runID}:handoff`,
         source: "opencode",
@@ -926,8 +943,10 @@ export function AutopilotPanel(props: {
     return { [active.id]: "blocked" as const }
   }
 
-  const finalSummary = (workspace: string, sessionID: string) => {
-    const text = autopilotHandoffFromText(workerPlainText(workspace, sessionID)).trim()
+  const finalSummary = (workspace: string, sessionID: string, assistantStart: number) => {
+    const text = autopilotHandoffFromText(
+      workerPlainText(workspace, sessionID, { assistantStart, includeToolOutput: true, max: MAX_WORKER_TEXT }),
+    ).trim()
     if (!text) return "The scoped opencode worker finished without a text summary."
     return text.slice(Math.max(0, text.length - 1_200))
   }
@@ -975,7 +994,7 @@ export function AutopilotPanel(props: {
   const eventFromPart = (runID: string, message: Message, part: Part): (Omit<AutopilotEvent, "id"> & { id: string }) | undefined => {
     const at = new Date(message.time.created).toISOString()
     if (message.role === "assistant" && (part.type === "text" || part.type === "reasoning")) {
-      const body = part.text.trim()
+      const body = trimWorkerText(part.text.trim(), MAX_WORKER_EVENT_DETAIL)
       if (!body) return
       return {
         id: `${runID}:part:${part.id}`,
@@ -990,10 +1009,10 @@ export function AutopilotPanel(props: {
     if (part.type === "tool") {
       const detail =
         part.state.status === "completed"
-          ? part.state.output
+          ? trimWorkerText(part.state.output, MAX_WORKER_EVENT_DETAIL)
           : part.state.status === "error"
-            ? part.state.error
-            : JSON.stringify(part.state.input, null, 2)
+            ? trimWorkerText(part.state.error, MAX_WORKER_EVENT_DETAIL)
+            : trimWorkerText(JSON.stringify(part.state.input, null, 2), MAX_WORKER_EVENT_DETAIL)
       return {
         id: `${runID}:tool:${part.id}:${part.state.status}`,
         source: "opencode",
@@ -1021,7 +1040,7 @@ export function AutopilotPanel(props: {
         source: "opencode",
         title: `Worker retry ${part.attempt}`,
         body: "The native worker retried after a provider/tool error.",
-        detail: JSON.stringify(part.error, null, 2),
+        detail: trimWorkerText(JSON.stringify(part.error, null, 2), MAX_WORKER_EVENT_DETAIL),
         at: new Date(part.time.created).toISOString(),
       }
     }
@@ -1035,10 +1054,10 @@ export function AutopilotPanel(props: {
   }
 
   const toolBody = (part: Extract<Part, { type: "tool" }>) => {
-    if (part.state.status === "completed") return part.state.title || part.state.output || `${part.tool} completed.`
-    if (part.state.status === "error") return part.state.error
-    if (part.state.status === "running") return part.state.title || JSON.stringify(part.state.input)
-    return JSON.stringify(part.state.input)
+    if (part.state.status === "completed") return trimWorkerText(part.state.title || part.state.output || `${part.tool} completed.`, MAX_WORKER_PART_TEXT)
+    if (part.state.status === "error") return trimWorkerText(part.state.error, MAX_WORKER_PART_TEXT)
+    if (part.state.status === "running") return trimWorkerText(part.state.title || JSON.stringify(part.state.input), MAX_WORKER_PART_TEXT)
+    return trimWorkerText(JSON.stringify(part.state.input), MAX_WORKER_PART_TEXT)
   }
 
   const ownerLabel = (owner: AutopilotPlanStep["owner"]) => {
@@ -2043,6 +2062,11 @@ export function AutopilotPanel(props: {
 }
 
 const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
+
+const trimWorkerText = (value: string, max = MAX_WORKER_TEXT) => {
+  if (value.length <= max) return value
+  return `${value.slice(0, max)}\n\n[Autopilot worker output truncated.]`
+}
 
 const withTimeout = async <T,>(promise: Promise<T>, ms: number, message: string) => {
   let timer: number | undefined
