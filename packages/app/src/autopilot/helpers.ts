@@ -128,6 +128,9 @@ export type CreateAutopilotRunInput = {
 
 const MAX_GOAL = 4_000
 const MAX_EVENT_BODY = 1_500
+const MAX_EVENT_DETAIL = 24_000
+const MAX_AUTOPILOT_EVENTS = 160
+const MAX_RESTORED_RUNNING_AGE = 30 * 60 * 1000
 const MAX_TEMPLATE_CATALOG = 30
 const MAX_WORKFLOW_CATALOG = 20
 const MAX_RESOURCE_FILE = 24_000
@@ -415,21 +418,39 @@ export function addAutopilotEvent(
 ): AutopilotRun {
   const events = autopilotEventsFromRun(run)
   if (event.id && events.some((item) => item.id === event.id)) return { ...run, events }
-  const body = event.body.length <= MAX_EVENT_BODY ? event.body : `${event.body.slice(0, MAX_EVENT_BODY)}...`
+  const body = truncateAutopilotText(event.body, MAX_EVENT_BODY)
   return {
     ...run,
     updatedAt: event.at,
-    events: [
+    events: trimAutopilotEvents([
       ...events,
-      {
+      sanitizeAutopilotEvent({
         id: event.id ?? `${run.runID}:event-${events.length + 1}`,
         source: event.source,
         title: event.title,
         body,
         detail: event.detail ?? event.body,
         at: event.at,
-      },
-    ],
+      }),
+    ]),
+  }
+}
+
+export function migrateAutopilotStore(value: unknown) {
+  if (!isRecord(value)) return value
+  const now = new Date().toISOString()
+  const current = isRecord(value.current) ? sanitizeRestoredAutopilotRun(value.current as unknown as AutopilotRun, now) : undefined
+  const runs = Array.isArray(value.runs)
+    ? value.runs.flatMap((item) => isRecord(item) ? [sanitizeRestoredAutopilotRun(item as unknown as AutopilotRun, now)] : [])
+    : []
+  const normalized = dedupeAutopilotRuns(runs.length ? runs : current ? [current] : [])
+  const currentRunID = typeof value.currentRunID === "string" ? value.currentRunID : current?.runID ?? normalized[0]?.runID
+  const selected = normalized.find((item) => item.runID === currentRunID) ?? current ?? normalized[0]
+  return {
+    ...value,
+    current: selected,
+    currentRunID: selected?.runID,
+    runs: normalized,
   }
 }
 
@@ -714,7 +735,7 @@ export function autopilotTaskItemsFromRun(run: AutopilotContextPayload) {
 }
 
 function autopilotEventsFromRun(run: AutopilotContextPayload) {
-  if (Array.isArray(run.events)) return run.events
+  if (Array.isArray(run.events)) return trimAutopilotEvents(run.events.map(sanitizeAutopilotEvent))
   return []
 }
 
@@ -865,4 +886,66 @@ function trimFiles(files: AutopilotTemplateContext["files"]) {
   ]
     .filter(Boolean)
     .join("\n\n")
+}
+
+function sanitizeRestoredAutopilotRun(run: AutopilotRun, now: string) {
+  const taskItems = autopilotTaskItemsFromRun(run).map((task) => ({ ...task }))
+  const restored = {
+    ...run,
+    runtime: run.runtime ?? "paddie-native" as const,
+    tasks: taskItems.map((task) => task.title),
+    taskItems,
+    plan: autopilotPlanFromRun(run).map((step) => ({ ...step })),
+    events: autopilotEventsFromRun(run),
+    safeguards: autopilotSafeguardsFromRun(run).slice(),
+  }
+  if ((restored.status !== "running" && restored.status !== "paused") || !isStaleRestoredRun(restored, now)) return restored
+  return addAutopilotEvent(
+    {
+      ...restored,
+      status: "stopped",
+      updatedAt: now,
+    },
+    {
+      id: `${restored.runID}:restored-stale`,
+      source: "system",
+      title: "Stale run restored as stopped",
+      body: "This Autopilot run was older than the worker timeout, so it was not resumed automatically.",
+      at: now,
+    },
+  )
+}
+
+export function sanitizeAutopilotEvent(event: AutopilotEvent): AutopilotEvent {
+  return {
+    ...event,
+    body: truncateAutopilotText(event.body, MAX_EVENT_BODY),
+    detail: event.detail ? truncateAutopilotText(event.detail, MAX_EVENT_DETAIL) : undefined,
+  }
+}
+
+function trimAutopilotEvents(events: AutopilotEvent[]) {
+  return events.slice(-MAX_AUTOPILOT_EVENTS)
+}
+
+function truncateAutopilotText(value: string, max: number) {
+  if (value.length <= max) return value
+  return `${value.slice(0, max)}\n\n[Autopilot output truncated.]`
+}
+
+function isStaleRestoredRun(run: AutopilotRun, now: string) {
+  const updatedAt = Date.parse(run.updatedAt || run.createdAt)
+  const nowTime = Date.parse(now)
+  if (!Number.isFinite(updatedAt) || !Number.isFinite(nowTime)) return false
+  return nowTime - updatedAt > MAX_RESTORED_RUNNING_AGE
+}
+
+function dedupeAutopilotRuns(runs: AutopilotRun[]) {
+  return runs
+    .filter((run, index, list) => run.runID && list.findIndex((item) => item.runID === run.runID) === index)
+    .slice(0, 20)
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
