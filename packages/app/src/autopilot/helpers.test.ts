@@ -459,8 +459,9 @@ Changed files: app.tsx`),
     expect(eventNoop).toBe(run)
   })
 
-  test("sanitizes oversized event bodies at run creation", () => {
-    const goal = "build the dashboard ".repeat(400)
+  test("captures the goal once and keeps event bodies bounded", () => {
+    const tasks = Array.from({ length: 20 }, (_, index) => `task ${index} ` + "x".repeat(200))
+    const goal = tasks.join("\n")
     const run = createAutopilotRun({
       runID: "run-large-goal",
       now: "2026-05-22T10:00:00.000Z",
@@ -469,8 +470,15 @@ Changed files: app.tsx`),
     })
 
     const goalEvent = run.events.find((event) => event.id === "run-large-goal:goal")
-    expect(goalEvent).toBeDefined()
-    expect(goalEvent!.body.length).toBeLessThan(goal.length)
-    expect(goalEvent!.body).toContain("[Autopilot output truncated.]")
+    expect(goalEvent?.body).toBe("Captured.")
+    expect(run.goal.length).toBeGreaterThan(1_500)
+
+    for (const event of run.events) {
+      expect(event.body.length).toBeLessThanOrEqual(2_000)
+    }
+
+    const tasksEvent = run.events.find((event) => event.id === "run-large-goal:tasks")
+    expect(tasksEvent).toBeDefined()
+    expect(tasksEvent!.body).toContain("[Autopilot output truncated.]")
   })
 })
