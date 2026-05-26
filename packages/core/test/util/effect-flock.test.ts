@@ -48,10 +48,10 @@ const worker = path.join(import.meta.dir, "../fixture/effect-flock-worker.ts")
 function run(msg: Msg) {
   return new Promise<{ code: number; stdout: Buffer; stderr: Buffer }>((resolve) => {
     const proc = spawn(process.execPath, [worker, JSON.stringify(msg)], { cwd: root })
-    const stdout: Buffer[] = []
-    const stderr: Buffer[] = []
-    proc.stdout?.on("data", (data) => stdout.push(Buffer.from(data)))
-    proc.stderr?.on("data", (data) => stderr.push(Buffer.from(data)))
+    const stdout: Uint8Array[] = []
+    const stderr: Uint8Array[] = []
+    proc.stdout?.on("data", (data) => stdout.push(new Uint8Array(Buffer.from(data))))
+    proc.stderr?.on("data", (data) => stderr.push(new Uint8Array(Buffer.from(data))))
     proc.on("close", (code) => {
       resolve({ code: code ?? 1, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) })
     })

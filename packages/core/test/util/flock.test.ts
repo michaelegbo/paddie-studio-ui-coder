@@ -65,11 +65,11 @@ function run(msg: Msg) {
       cwd: root,
     })
 
-    const stdout: Buffer[] = []
-    const stderr: Buffer[] = []
+    const stdout: Uint8Array[] = []
+    const stderr: Uint8Array[] = []
 
-    proc.stdout?.on("data", (data) => stdout.push(Buffer.from(data)))
-    proc.stderr?.on("data", (data) => stderr.push(Buffer.from(data)))
+    proc.stdout?.on("data", (data) => stdout.push(new Uint8Array(Buffer.from(data))))
+    proc.stderr?.on("data", (data) => stderr.push(new Uint8Array(Buffer.from(data))))
 
     proc.on("close", (code) => {
       resolve({
