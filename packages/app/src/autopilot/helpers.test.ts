@@ -16,6 +16,7 @@ import {
   extractAutopilotTasks,
   formatAutopilotModel,
   markAutopilotSubmitted,
+  migrateAutopilotStore,
   nativePlannerPrompt,
   nativeVerificationPrompt,
   nativeWorkerPrompt,
@@ -261,14 +262,14 @@ Changed files: app.tsx`),
     expect(paused.events.at(-1)).toMatchObject({ title: "Run paused" })
   })
 
-  test("keeps full event detail when timeline body is shortened", () => {
+  test("bounds event detail when timeline body is shortened", () => {
     const run = createAutopilotRun({
       runID: "run-detail",
       now: "2026-05-22T10:00:00.000Z",
       goal: "Build a todo app",
       workspace: "/repo",
     })
-    const detail = "Native worker stack\n".repeat(200)
+    const detail = "Native worker stack\n".repeat(3_000)
     const withEvent = addAutopilotEvent(run, {
       id: "run-detail:opencode-error",
       source: "opencode",
@@ -278,8 +279,38 @@ Changed files: app.tsx`),
     })
 
     expect(withEvent.events.at(-1)?.body.length).toBeLessThan(detail.length)
-    expect(withEvent.events.at(-1)?.detail).toBe(detail)
+    expect(withEvent.events.at(-1)?.detail?.length).toBeLessThan(detail.length)
+    expect(withEvent.events.at(-1)?.detail).toContain("[Autopilot output truncated.]")
     expect(autopilotContextFromRun(withEvent).events.at(-1)).not.toHaveProperty("detail")
+  })
+
+  test("migrates stale running persisted runs into stopped sanitized runs", () => {
+    const run = addAutopilotEvent(
+      createAutopilotRun({
+        runID: "run-stale",
+        now: "2026-05-22T10:00:00.000Z",
+        goal: "Build a todo app",
+        workspace: "/repo",
+      }),
+      {
+        id: "run-stale:large-detail",
+        source: "opencode",
+        title: "Large worker output",
+        body: "x".repeat(40_000),
+        detail: "x".repeat(40_000),
+        at: "2026-05-22T10:01:00.000Z",
+      },
+    )
+    const migrated = migrateAutopilotStore({
+      currentRunID: "run-stale",
+      current: run,
+      runs: [run],
+    }) as { current: typeof run; runs: Array<typeof run> }
+
+    expect(migrated.current.status).toBe("stopped")
+    expect(migrated.current.events.at(-1)?.title).toBe("Stale run restored as stopped")
+    expect(migrated.current.events.find((event) => event.id === "run-stale:large-detail")?.detail?.length).toBeLessThan(40_000)
+    expect(migrated.runs).toHaveLength(1)
   })
 
   test("marks submitted runs and binds the worker session without duplicate events", () => {

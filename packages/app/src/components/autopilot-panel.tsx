@@ -23,10 +23,12 @@ import {
   createAutopilotTaskItems,
   createAutopilotRun,
   formatAutopilotModel,
+  migrateAutopilotStore,
   nativePlannerPrompt,
   nativeVerificationPrompt,
   nativeWorkerPrompt,
   normalizeAutopilotWorkspaces,
+  sanitizeAutopilotEvent,
   selectedTemplateFromText,
   selectedWorkflowFromText,
   setAutopilotPlanStatuses,
@@ -115,7 +117,10 @@ export function AutopilotPanel(props: {
   const [clock, setClock] = createSignal(Date.now())
   const [targetWorkspaces, setTargetWorkspaces] = createSignal<string[]>([sdk.directory])
   const [store, setStore] = persisted(
-    Persist.workspace(sdk.directory, "autopilot", ["autopilot.native.v1"]),
+    {
+      ...Persist.workspace(sdk.directory, "autopilot", ["autopilot.native.v1"]),
+      migrate: migrateAutopilotStore,
+    },
     createStore<{
       current?: AutopilotRun
       currentRunID?: string
@@ -436,20 +441,21 @@ export function AutopilotPanel(props: {
     const base = statuses ? setAutopilotPlanStatuses(current, statuses) : current
     const index = base.events.findIndex((item) => item.id === event.id)
     if (index < 0) return addAutopilotEvent(base, event)
-    if (base.events[index]?.body === event.body && base.events[index]?.detail === (event.detail ?? event.body)) return base
+    const nextEvent = sanitizeAutopilotEvent({
+      id: event.id,
+      source: event.source,
+      title: event.title,
+      body: event.body,
+      detail: event.detail ?? event.body,
+      at: event.at,
+    })
+    if (base.events[index]?.body === nextEvent.body && base.events[index]?.detail === nextEvent.detail) return base
     return {
       ...base,
       updatedAt: event.at,
       events: base.events.map((item, itemIndex) =>
         itemIndex === index
-          ? {
-              ...item,
-              source: event.source,
-              title: event.title,
-              body: event.body.length <= 1_500 ? event.body : `${event.body.slice(0, 1_500)}...`,
-              detail: event.detail ?? event.body,
-              at: event.at,
-            }
+          ? nextEvent
           : item,
       ),
     }
