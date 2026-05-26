@@ -208,6 +208,43 @@ export function createAutopilotRun(input: CreateAutopilotRunInput): AutopilotRun
   const now = input.now ?? new Date().toISOString()
   const runID = input.runID ?? `autopilot-${Date.now().toString(36)}`
 
+  const events: AutopilotEvent[] = [
+    {
+      id: `${runID}:goal`,
+      source: "user",
+      title: "Goal accepted",
+      body: goal,
+      at: now,
+    },
+    {
+      id: `${runID}:model`,
+      source: "paddie",
+      title: "Model selection captured",
+      body: `${input.agent ? `Agent ${input.agent}` : "Current agent"} using ${formatAutopilotModel(input.model)}.`,
+      at: now,
+    },
+    {
+      id: `${runID}:runtime`,
+      source: "autopilot",
+      title: "Paddie Native runtime prepared",
+      body: "Autopilot will create a scoped opencode worker session and keep normal chat isolated.",
+      at: now,
+    },
+    ...(
+      tasks.length > 1
+        ? [
+            {
+              id: `${runID}:tasks`,
+              source: "autopilot" as const,
+              title: "Task queue captured",
+              body: tasks.map((task, index) => `${index + 1}. ${task}`).join("\n"),
+              at: now,
+            },
+          ]
+        : []
+    ),
+  ]
+
   return {
     runID,
     sessionID: input.sessionID,
@@ -220,42 +257,7 @@ export function createAutopilotRun(input: CreateAutopilotRunInput): AutopilotRun
     agent: input.agent,
     model: input.model,
     plan: createNativeAutopilotPlan(),
-    events: [
-      {
-        id: `${runID}:goal`,
-        source: "user",
-        title: "Goal accepted",
-        body: goal,
-        at: now,
-      },
-      {
-        id: `${runID}:model`,
-        source: "paddie",
-        title: "Model selection captured",
-        body: `${input.agent ? `Agent ${input.agent}` : "Current agent"} using ${formatAutopilotModel(input.model)}.`,
-        at: now,
-      },
-      {
-        id: `${runID}:runtime`,
-        source: "autopilot",
-        title: "Paddie Native runtime prepared",
-        body: "Autopilot will create a scoped opencode worker session and keep normal chat isolated.",
-        at: now,
-      },
-      ...(
-        tasks.length > 1
-          ? [
-              {
-                id: `${runID}:tasks`,
-                source: "autopilot" as const,
-                title: "Task queue captured",
-                body: tasks.map((task, index) => `${index + 1}. ${task}`).join("\n"),
-                at: now,
-              },
-            ]
-          : []
-      ),
-    ],
+    events: events.map(sanitizeAutopilotEvent),
     safeguards: fallbackSafeguards,
     createdAt: now,
     updatedAt: now,
@@ -294,13 +296,18 @@ export function setAutopilotPlanStatuses(
   run: AutopilotRun,
   statuses: Partial<Record<AutopilotPlanStep["id"], AutopilotStepStatus>>,
 ) {
+  const plan = autopilotPlanFromRun(run)
+  let changed = !Array.isArray(run.plan) || run.plan !== plan
+  const nextPlan = plan.map((step) => {
+    const status = statuses[step.id]
+    if (!status || status === step.status) return step
+    changed = true
+    return { ...step, status }
+  })
+  if (!changed) return run
   return {
     ...run,
-    plan: autopilotPlanFromRun(run).map((step) => {
-      const status = statuses[step.id]
-      if (!status) return step
-      return { ...step, status }
-    }),
+    plan: nextPlan,
   }
 }
 
@@ -385,11 +392,14 @@ export function setAutopilotTaskStatuses(
   now = new Date().toISOString(),
 ) {
   const taskItems = autopilotTaskItemsFromRun(run)
+  let changed = !Array.isArray(run.taskItems) || run.taskItems !== taskItems
   const next = taskItems.map((task, index) => {
     const status = statuses[index + 1]
-    if (!status) return task
+    if (!status || status === task.status) return task
+    changed = true
     return { ...task, status }
   })
+  if (!changed) return run
   return {
     ...run,
     tasks: next.map((task) => task.title),
@@ -419,8 +429,14 @@ export function addAutopilotEvent(
   run: AutopilotRun,
   event: Omit<AutopilotEvent, "id"> & { id?: string },
 ): AutopilotRun {
+  if (event.id && Array.isArray(run.events) && run.events.some((item) => item.id === event.id)) {
+    return run
+  }
   const events = autopilotEventsFromRun(run)
-  if (event.id && events.some((item) => item.id === event.id)) return { ...run, events }
+  if (event.id && events.some((item) => item.id === event.id)) {
+    if (events === run.events) return run
+    return { ...run, events }
+  }
   const body = truncateAutopilotText(event.body, MAX_EVENT_BODY)
   return {
     ...run,

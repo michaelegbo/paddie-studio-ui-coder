@@ -103,6 +103,7 @@ const WAIT_NOTICE_INTERVAL_MS = 45 * 1000
 const MAX_WORKER_TEXT = 18_000
 const MAX_WORKER_PART_TEXT = 4_000
 const MAX_WORKER_EVENT_DETAIL = 12_000
+const SET_RUN_BURST_LIMIT = 50
 
 export function AutopilotPanel(props: {
   chatHidden?: boolean
@@ -147,21 +148,76 @@ export function AutopilotPanel(props: {
   const run = () => runByID(store.currentRunID) ?? runs()[0]
   const selectedWorkspace = createMemo(() => run()?.workspace ?? targetWorkspaces()[0] ?? sdk.directory)
   const selectedStore = createMemo(() => globalSync.child(selectedWorkspace(), { bootstrap: false })[0])
+  const trippedRuns = new Set<string>()
+  let setRunBurstCount = 0
+  let setRunBurstScheduled = false
   const setRun = (next: AutopilotRun | undefined, select = true) => {
     if (!next) {
       setStore("current", undefined)
       setStore("currentRunID", undefined)
       return
     }
+    if (trippedRuns.has(next.runID) && next.status !== "stopped") return
     const currentRuns = runs()
     const index = currentRuns.findIndex((item) => item.runID === next.runID)
-    const updated = index < 0 ? [next, ...currentRuns] : currentRuns.map((item) => (item.runID === next.runID ? next : item))
+    if (index >= 0 && currentRuns[index] === next) {
+      if (select && store.currentRunID !== next.runID) {
+        setStore("currentRunID", next.runID)
+        setStore("current", next)
+      }
+      return
+    }
+    setRunBurstCount++
+    if (!setRunBurstScheduled) {
+      setRunBurstScheduled = true
+      queueMicrotask(() => {
+        setRunBurstCount = 0
+        setRunBurstScheduled = false
+      })
+    }
+    let writeable = next
+    if (
+      setRunBurstCount > SET_RUN_BURST_LIMIT &&
+      !trippedRuns.has(next.runID) &&
+      next.status !== "stopped"
+    ) {
+      trippedRuns.add(next.runID)
+      const at = new Date().toISOString()
+      writeable = transitionAutopilotRun(
+        addAutopilotEvent(next, {
+          id: `${next.runID}:loop-tripped`,
+          source: "system",
+          title: "Autopilot stopped to keep Studio responsive",
+          body:
+            "Detected a runaway update loop. The run was stopped automatically so the rest of Studio stays responsive.",
+          at,
+        }),
+        "stopped",
+        at,
+      )
+      if (next.sessionID) {
+        void clientForWorkspace(next.workspace)
+          .session.abort({ sessionID: next.sessionID })
+          .catch(() => undefined)
+        globalSync.child(next.workspace)[1]("session_status", next.sessionID, { type: "idle" })
+      }
+      showToast({
+        variant: "error",
+        title: "Autopilot stopped",
+        description: "Detected a runaway update loop. The run was stopped so Studio stays responsive.",
+      })
+    }
+    const writeableIndex = currentRuns.findIndex((item) => item.runID === writeable.runID)
+    const updated =
+      writeableIndex < 0
+        ? [writeable, ...currentRuns]
+        : currentRuns.map((item) => (item.runID === writeable.runID ? writeable : item))
     setStore("runs", updated.slice(0, 20))
     if (select) {
-      setStore("currentRunID", next.runID)
-      setStore("current", next)
-    } else if (store.currentRunID === next.runID || !store.currentRunID) {
-      setStore("current", next)
+      setStore("currentRunID", writeable.runID)
+      setStore("current", writeable)
+    } else if (store.currentRunID === writeable.runID || !store.currentRunID) {
+      setStore("current", writeable)
     }
   }
   const selectRun = (runID: string) => {
@@ -172,6 +228,46 @@ export function AutopilotPanel(props: {
     setGoal(next.goal)
     setTargetWorkspaces([next.workspace])
   }
+  const isFinishedRun = (status: AutopilotRunStatus) =>
+    status === "completed" || status === "stopped"
+  const removeRun = (runID: string) => {
+    const target = runByID(runID)
+    if (target?.sessionID && !isFinishedRun(target.status)) {
+      void clientForWorkspace(target.workspace)
+        .session.abort({ sessionID: target.sessionID })
+        .catch(() => undefined)
+      globalSync.child(target.workspace)[1]("session_status", target.sessionID, { type: "idle" })
+    }
+    trippedRuns.delete(runID)
+    const remaining = runs().filter((item) => item.runID !== runID)
+    setStore("runs", remaining)
+    if (store.currentRunID === runID) {
+      const replacement = remaining[0]
+      setStore("currentRunID", replacement?.runID)
+      setStore("current", replacement)
+      if (!replacement) {
+        setGoal("")
+        setTargetWorkspaces([sdk.directory])
+      }
+    } else if (!remaining.length) {
+      setStore("current", undefined)
+    }
+  }
+  const clearFinishedRuns = () => {
+    const remaining = runs().filter((item) => !isFinishedRun(item.status))
+    if (remaining.length === runs().length) return
+    setStore("runs", remaining)
+    if (store.currentRunID && !remaining.some((item) => item.runID === store.currentRunID)) {
+      const replacement = remaining[0]
+      setStore("currentRunID", replacement?.runID)
+      setStore("current", replacement)
+      if (!replacement) {
+        setGoal("")
+        setTargetWorkspaces([sdk.directory])
+      }
+    }
+  }
+  const finishedRunCount = createMemo(() => runs().filter((item) => isFinishedRun(item.status)).length)
 
   const model = createMemo(() => {
     const current = local.model.current()
@@ -185,17 +281,37 @@ export function AutopilotPanel(props: {
 
   const agent = createMemo(() => local.agent.current()?.name)
   const workerSessionID = createMemo(() => run()?.sessionID)
+  const runStatus = createMemo(() => run()?.status)
+  const workerWorkspace = createMemo(() => run()?.workspace)
   const workerMessages = createMemo(() => {
     const sessionID = workerSessionID()
     if (!sessionID) return [] as Message[]
     return selectedStore().message[sessionID] ?? []
   })
-  const workerParts = createMemo(() => {
-    const sessionID = workerSessionID()
-    if (!sessionID) return {} as Record<string, Part[] | undefined>
-    const store = selectedStore()
-    return Object.fromEntries(workerMessages().map((message) => [message.id, store.part[message.id]]))
-  })
+  const workerParts = createMemo<Record<string, Part[] | undefined>>(
+    () => {
+      const sessionID = workerSessionID()
+      if (!sessionID) return {}
+      const store = selectedStore()
+      const next: Record<string, Part[] | undefined> = {}
+      for (const message of workerMessages()) {
+        next[message.id] = store.part[message.id]
+      }
+      return next
+    },
+    {},
+    {
+      equals: (a, b) => {
+        if (a === b) return true
+        const aKeys = Object.keys(a)
+        if (aKeys.length !== Object.keys(b).length) return false
+        for (const key of aKeys) {
+          if (a[key] !== b[key]) return false
+        }
+        return true
+      },
+    },
+  )
   const previewUrl = createMemo(() => previewFromSession(workerMessages(), workerParts()) ?? "")
   const workerStatus = createMemo(() => {
     const sessionID = workerSessionID()
@@ -351,17 +467,17 @@ export function AutopilotPanel(props: {
   })
 
   createEffect(() => {
-    const current = run()
-    if (!current || current.status === "completed" || current.status === "stopped") return
+    const status = runStatus()
+    if (!status || status === "completed" || status === "stopped") return
     const timer = window.setInterval(() => setClock(Date.now()), 1_000)
     onCleanup(() => window.clearInterval(timer))
   })
 
   createEffect(() => {
     const sessionID = workerSessionID()
-    const current = run()
-    if (!sessionID || !current) return
-    void sync.session.sync(sessionID, { force: true, directory: current.workspace }).catch(() => undefined)
+    const workspace = workerWorkspace()
+    if (!sessionID || !workspace) return
+    void sync.session.sync(sessionID, { force: true, directory: workspace }).catch(() => undefined)
     const timer = window.setInterval(() => {
       const latest = run()
       if (!latest || latest.sessionID !== sessionID) return
@@ -966,13 +1082,20 @@ export function AutopilotPanel(props: {
     setView("activity")
   }
 
+  const scanCursors = new Map<string, number>()
   const scanWorkerOutput = (
     current: AutopilotRun,
     messages: Message[],
     partsByMessage: Record<string, Part[] | undefined>,
   ) => {
+    const cursorKey = `${current.runID}:${current.sessionID ?? ""}`
+    const cachedCount = scanCursors.get(cursorKey) ?? 0
+    const startIndex = Math.max(0, Math.min(cachedCount - 1, messages.length - 1))
+    scanCursors.set(cursorKey, messages.length)
     let next = current
-    for (const message of messages) {
+    for (let index = startIndex; index < messages.length; index++) {
+      const message = messages[index]
+      if (!message) continue
       const parts = partsByMessage[message.id] ?? []
       for (const part of parts) {
         const item = eventFromPart(current.runID, message, part)
@@ -1262,23 +1385,52 @@ export function AutopilotPanel(props: {
             <div class="text-14-bold text-text-base">Autopilot sessions</div>
             <div class="mt-0.5 text-11-medium text-text-weak">Switch between native runs without changing normal chat.</div>
           </div>
-          <span class="rounded-full border border-border-weaker-base px-2 py-1 text-11-medium text-text-weak">
-            {runs().length} saved
-          </span>
+          <div class="flex items-center gap-2">
+            <span class="rounded-full border border-border-weaker-base px-2 py-1 text-11-medium text-text-weak">
+              {runs().length} saved
+            </span>
+            <Show when={finishedRunCount() > 0}>
+              <Button
+                variant="ghost"
+                class="h-8 px-3 text-11-medium"
+                onClick={clearFinishedRuns}
+              >
+                Clear finished
+              </Button>
+            </Show>
+          </div>
         </div>
         <div class="flex gap-2 overflow-x-auto p-3">
           <For each={runs()}>
             {(item) => (
-              <button
-                type="button"
-                class={`min-w-[240px] rounded-[14px] border p-3 text-left transition-colors ${
+              <div
+                role="button"
+                tabindex="0"
+                class={`relative min-w-[240px] rounded-[14px] border p-3 text-left transition-colors ${
                   run()?.runID === item.runID
                     ? "border-blue-500/40 bg-blue-500/[0.06]"
                     : "border-border-weaker-base bg-background-stronger hover:bg-surface-base-hover"
                 }`}
                 onClick={() => selectRun(item.runID)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault()
+                    selectRun(item.runID)
+                  }
+                }}
               >
-                <div class="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  aria-label="Remove this Autopilot run"
+                  class="absolute right-2 top-2 flex size-6 items-center justify-center rounded-full border border-border-weaker-base bg-background-base text-text-weak transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    removeRun(item.runID)
+                  }}
+                >
+                  <Icon name="trash" class="size-3" />
+                </button>
+                <div class="flex items-center justify-between gap-2 pr-7">
                   <div class="min-w-0 truncate text-12-bold text-text-base">{workspaceName(item.workspace)}</div>
                   <span class={`shrink-0 rounded-full border px-2 py-0.5 text-10-medium ${runStatusClassFor(item.status)}`}>
                     {item.status}
@@ -1289,7 +1441,7 @@ export function AutopilotPanel(props: {
                   <span class="truncate">{item.sessionID ?? "No worker yet"}</span>
                   <span>{new Date(item.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                 </div>
-              </button>
+              </div>
             )}
           </For>
         </div>

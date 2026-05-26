@@ -24,6 +24,7 @@ import {
   normalizeAutopilotWorkspaces,
   selectedTemplateFromText,
   selectedWorkflowFromText,
+  setAutopilotPlanStatuses,
   setAutopilotTaskStatuses,
   transitionAutopilotRun,
   updateAutopilotTaskQueue,
@@ -426,5 +427,50 @@ Changed files: app.tsx`),
       source: "autopilot",
       title: "Run completed",
     })
+  })
+
+  test("returns the same run reference when plan, task, and event updates are no-ops", () => {
+    const run = markAutopilotSubmitted(
+      createAutopilotRun({
+        runID: "run-noop",
+        now: "2026-05-22T10:00:00.000Z",
+        goal: "Build a todo app",
+        workspace: "/repo",
+      }),
+      "2026-05-22T10:01:00.000Z",
+    )
+
+    const samePlan = setAutopilotPlanStatuses(run, { understand: "done", gather: "done", plan: "active" })
+    expect(samePlan).toBe(run)
+
+    const taskStaged = setAutopilotTaskStatuses(run, { 1: "active" }, "2026-05-22T10:02:00.000Z")
+    expect(taskStaged).not.toBe(run)
+    const taskNoop = setAutopilotTaskStatuses(taskStaged, { 1: "active" }, "2026-05-22T10:03:00.000Z")
+    expect(taskNoop).toBe(taskStaged)
+
+    const eventID = run.events[0]!.id
+    const eventNoop = addAutopilotEvent(run, {
+      id: eventID,
+      source: "autopilot",
+      title: "Repeat",
+      body: "Repeat",
+      at: "2026-05-22T10:04:00.000Z",
+    })
+    expect(eventNoop).toBe(run)
+  })
+
+  test("sanitizes oversized event bodies at run creation", () => {
+    const goal = "build the dashboard ".repeat(400)
+    const run = createAutopilotRun({
+      runID: "run-large-goal",
+      now: "2026-05-22T10:00:00.000Z",
+      goal,
+      workspace: "/repo",
+    })
+
+    const goalEvent = run.events.find((event) => event.id === "run-large-goal:goal")
+    expect(goalEvent).toBeDefined()
+    expect(goalEvent!.body.length).toBeLessThan(goal.length)
+    expect(goalEvent!.body).toContain("[Autopilot output truncated.]")
   })
 })
