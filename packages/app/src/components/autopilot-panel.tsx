@@ -95,7 +95,11 @@ type StudioWorkflowCodegen = {
 }
 
 const WAIT_TIMEOUT_MS = 30 * 60 * 1000
+const PLANNER_TIMEOUT_MS = 5 * 60 * 1000
+const RESOURCE_TIMEOUT_MS = 15 * 1000
 const WAIT_INTERVAL_MS = 1_200
+const WAIT_NOTICE_MS = 20 * 1000
+const WAIT_NOTICE_INTERVAL_MS = 45 * 1000
 
 export function AutopilotPanel(props: {
   chatHidden?: boolean
@@ -488,7 +492,11 @@ export function AutopilotPanel(props: {
     }
 
     try {
-      const templates = await paddieApi.get<UITemplateMeta[]>("/studio/ui-templates")
+      const templates = await withTimeout(
+        paddieApi.get<UITemplateMeta[]>("/studio/ui-templates"),
+        RESOURCE_TIMEOUT_MS,
+        "Paddie template catalog did not respond within 15 seconds.",
+      )
       return {
         templateAccess: "available",
         templates: templates.map((template) => ({
@@ -521,7 +529,11 @@ export function AutopilotPanel(props: {
     }
 
     try {
-      const workflows = await paddieApi.get<StudioWorkflow[]>("/studio/flows")
+      const workflows = await withTimeout(
+        paddieApi.get<StudioWorkflow[]>("/studio/flows"),
+        RESOURCE_TIMEOUT_MS,
+        "Paddie workflow catalog did not respond within 15 seconds.",
+      )
       return {
         workflowAccess: "available",
         workflows: workflows.map((workflow) => ({
@@ -616,21 +628,54 @@ export function AutopilotPanel(props: {
     })
   }
 
-  const waitForIdle = async (runID: string, workspace: string, sessionID: string, assistantCountBefore: number) => {
+  const waitForIdle = async (
+    runID: string,
+    workspace: string,
+    sessionID: string,
+    assistantCountBefore: number,
+    label: string,
+    activeStepID: AutopilotPlanStep["id"],
+    timeout = WAIT_TIMEOUT_MS,
+  ) => {
     const started = Date.now()
-    while (Date.now() - started < WAIT_TIMEOUT_MS) {
+    let lastNoticeAt = 0
+    while (Date.now() - started < timeout) {
       await waitForRunnable(runID)
       await sync.session.sync(sessionID, { force: true, directory: workspace }).catch(() => undefined)
       const current = runByID(runID)
       if (!current || current.runID !== runID || current.status === "stopped") throw new Error("Autopilot run stopped.")
       const workspaceStore = globalSync.child(workspace, { bootstrap: false })[0]
-      scanWorkerOutput(current, workspaceStore.message[sessionID] ?? [], Object.fromEntries((workspaceStore.message[sessionID] ?? []).map((message) => [message.id, workspaceStore.part[message.id]])))
+      const messages = workspaceStore.message[sessionID] ?? []
+      const partsByMessage = Object.fromEntries(messages.map((message) => [message.id, workspaceStore.part[message.id]]))
+      scanWorkerOutput(current, messages, partsByMessage)
       const idle = (workspaceStore.session_status[sessionID]?.type ?? "idle") === "idle"
       const hasResponse = assistantMessageCount(workspace, sessionID) > assistantCountBefore
-      if (idle && hasResponse) return
+      if ((idle && hasResponse) || workerResponseSettled(messages, partsByMessage, assistantCountBefore)) return
+      const elapsed = Date.now() - started
+      if (elapsed >= WAIT_NOTICE_MS && elapsed - lastNoticeAt >= WAIT_NOTICE_INTERVAL_MS) {
+        const latest = runByID(runID)
+        if (latest) {
+          setRun(
+            upsertRunEvent(
+              latest,
+              {
+                id: `${runID}:wait:${activeStepID}`,
+                source: "autopilot",
+                title: `${label} still running`,
+                body: `Waiting for the scoped opencode worker. ${Math.floor(elapsed / 1_000)} seconds elapsed.`,
+                detail: `Session ${sessionID} is still reported as ${workspaceStore.session_status[sessionID]?.type ?? "idle"} in ${workspace}.`,
+                at: new Date().toISOString(),
+              },
+              { [activeStepID]: "active" },
+            ),
+            store.currentRunID === runID,
+          )
+        }
+        lastNoticeAt = elapsed
+      }
       await delay(WAIT_INTERVAL_MS)
     }
-    throw new Error("Autopilot worker did not finish before the timeout.")
+    throw new Error(`${label} did not finish before the ${Math.round(timeout / 60_000)} minute timeout.`)
   }
 
   const waitForRunnable = async (runID: string) => {
@@ -717,9 +762,13 @@ export function AutopilotPanel(props: {
         { understand: "done", gather: "active" },
       )
 
+      const [templateResources, workflowResources] = await Promise.all([
+        loadTemplateCatalog(current),
+        loadWorkflowCatalog(current),
+      ])
       const resources = {
-        ...(await loadTemplateCatalog(current)),
-        ...(await loadWorkflowCatalog(current)),
+        ...templateResources,
+        ...workflowResources,
       } satisfies AutopilotResourceInput
 
       current = runByID(current.runID) ?? current
@@ -774,7 +823,7 @@ export function AutopilotPanel(props: {
         "Planner prompt submitted",
         { plan: "active" },
       )
-      await waitForIdle(current.runID, workspace, sessionID, plannerBefore)
+      await waitForIdle(current.runID, workspace, sessionID, plannerBefore, "Planning", "plan", PLANNER_TIMEOUT_MS)
 
       const plannerOutput = workerPlainText(workspace, sessionID)
       const plannedTasks = autopilotTaskQueueFromText(plannerOutput)
@@ -808,7 +857,7 @@ export function AutopilotPanel(props: {
         "Implementation prompt submitted",
         { plan: "done", choose: "done", implement: "active" },
       )
-      await waitForIdle(current.runID, workspace, sessionID, workerBefore)
+      await waitForIdle(current.runID, workspace, sessionID, workerBefore, "Implementation", "implement")
 
       current = runByID(current.runID) ?? current
       if (!current || current.status === "stopped") return
@@ -821,7 +870,7 @@ export function AutopilotPanel(props: {
         "Verification prompt submitted",
         { implement: "done", verify: "active" },
       )
-      await waitForIdle(current.runID, workspace, sessionID, verifyBefore)
+      await waitForIdle(current.runID, workspace, sessionID, verifyBefore, "Verification", "verify")
 
       current = runByID(current.runID) ?? current
       if (!current || current.status === "stopped") return
@@ -1994,6 +2043,32 @@ export function AutopilotPanel(props: {
 }
 
 const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
+
+const withTimeout = async <T,>(promise: Promise<T>, ms: number, message: string) => {
+  let timer: number | undefined
+  const timeout = new Promise<T>((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(message)), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) window.clearTimeout(timer)
+  })
+}
+
+const workerResponseSettled = (
+  messages: Message[],
+  partsByMessage: Record<string, Part[] | undefined>,
+  assistantCountBefore: number,
+) => {
+  const assistantMessages = messages.filter((message) => message.role === "assistant").slice(assistantCountBefore)
+  if (!assistantMessages.length) return false
+  const parts = assistantMessages.flatMap((message) => partsByMessage[message.id] ?? [])
+  if (!parts.length) return false
+  if (parts.some((part) => part.type === "tool" && (part.state.status === "pending" || part.state.status === "running"))) {
+    return false
+  }
+  if (parts.some((part) => part.type === "step-finish")) return true
+  return parts.some((part) => (part.type === "text" || part.type === "reasoning") && part.text.trim() && part.time?.end)
+}
 
 const errorText = (err: unknown) => {
   const message = paddieApiErrorMessage(err)
