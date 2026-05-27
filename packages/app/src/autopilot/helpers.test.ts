@@ -6,6 +6,8 @@ import {
   autopilotGoalNeedsWorkflow,
   autopilotHandoffFromText,
   autopilotHasHandoff,
+  createAutopilotQueueItem,
+  sanitizeAutopilotQueue,
   autopilotPhaseFromText,
   autopilotPhaseStatuses,
   autopilotTaskQueueFromText,
@@ -276,6 +278,65 @@ Changed files: app.tsx`),
     expect(autopilotHasHandoff("Halfway done\nPADDIE_AUTOPILOT_HANDOFF:\nOutcome: ok")).toBe(true)
     expect(autopilotHasHandoff("PADDIE_AUTOPILOT_HANDOFF: shorthand")).toBe(true)
     expect(autopilotHasHandoff("paddie_autopilot_handoff: case-insensitive too")).toBe(true)
+  })
+
+  test("createAutopilotQueueItem normalises the goal and stamps an id", () => {
+    const item = createAutopilotQueueItem({
+      goal: "  Build a   dashboard   ",
+      workspaces: ["C:/repo/app", "C:/repo/app", " C:/repo/api "],
+      agent: "build",
+      model: { providerID: "openai", modelID: "gpt-5", variant: "high" },
+      id: "queue-test",
+      now: "2026-05-27T10:00:00.000Z",
+    })
+
+    expect(item).toMatchObject({
+      id: "queue-test",
+      goal: "Build a dashboard",
+      workspaces: ["C:/repo/app", "C:/repo/api"],
+      agent: "build",
+      queuedAt: "2026-05-27T10:00:00.000Z",
+    })
+    expect(item.model).toEqual({ providerID: "openai", modelID: "gpt-5", variant: "high" })
+  })
+
+  test("createAutopilotQueueItem rejects empty goals", () => {
+    expect(() => createAutopilotQueueItem({ goal: "  ", workspaces: ["C:/repo"] })).toThrow()
+  })
+
+  test("sanitizeAutopilotQueue drops malformed entries and caps the queue size", () => {
+    const sanitized = sanitizeAutopilotQueue([
+      { id: "ok", goal: "task one", workspaces: ["/repo"], queuedAt: "2026-05-27T10:00:00.000Z" },
+      { id: "missing-workspaces", goal: "task two", workspaces: [] },
+      { id: "empty-goal", goal: "   ", workspaces: ["/repo"] },
+      { id: "ok-2", goal: "task three", workspaces: ["/repo", "/other"] },
+      "string-not-record",
+      null,
+      { id: "ok", goal: "duplicate id", workspaces: ["/repo"] },
+    ])
+
+    expect(sanitized.map((item) => item.id)).toEqual(["ok", "ok-2"])
+    expect(sanitized[0]!.goal).toBe("task one")
+    expect(sanitized[1]!.workspaces).toEqual(["/repo", "/other"])
+
+    const oversize = Array.from({ length: 60 }, (_, index) => ({
+      id: `q${index}`,
+      goal: `task ${index}`,
+      workspaces: ["/repo"],
+    }))
+    expect(sanitizeAutopilotQueue(oversize)).toHaveLength(50)
+  })
+
+  test("migrateAutopilotStore preserves queue and queuePaused across reloads", () => {
+    const migrated = migrateAutopilotStore({
+      queue: [
+        { id: "q1", goal: "next task", workspaces: ["/repo"], queuedAt: "2026-05-27T10:00:00.000Z" },
+      ],
+      queuePaused: true,
+    }) as { queue: typeof migrateAutopilotStore extends never ? never : Array<{ id: string }>; queuePaused: boolean }
+
+    expect(migrated.queue.map((item) => item.id)).toEqual(["q1"])
+    expect(migrated.queuePaused).toBe(true)
   })
 
   test("classifies approval-gated actions", () => {
