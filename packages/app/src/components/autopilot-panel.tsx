@@ -21,6 +21,7 @@ import {
   autopilotTaskStatusMarkers,
   bindAutopilotSession,
   completeAutopilotRun,
+  createAutopilotQueueItem,
   createAutopilotTaskItems,
   createAutopilotRun,
   formatAutopilotModel,
@@ -40,6 +41,7 @@ import {
   updateAutopilotTaskQueue,
   type AutopilotEvent,
   type AutopilotPlanStep,
+  type AutopilotQueueItem,
   type AutopilotResourceInput,
   type AutopilotRun,
   type AutopilotRunStatus,
@@ -140,10 +142,14 @@ export function AutopilotPanel(props: {
       current?: AutopilotRun
       currentRunID?: string
       runs?: AutopilotRun[]
+      queue?: AutopilotQueueItem[]
+      queuePaused?: boolean
     }>({
       current: undefined,
       currentRunID: undefined,
       runs: [],
+      queue: [],
+      queuePaused: false,
     }),
   )
   const runs = createMemo(() => {
@@ -305,6 +311,127 @@ export function AutopilotPanel(props: {
     }
   }
   const finishedRunCount = createMemo(() => runs().filter((item) => isFinishedRun(item.status)).length)
+
+  const queue = createMemo<AutopilotQueueItem[]>(() => store.queue ?? [])
+  const queueLength = createMemo(() => queue().length)
+  const queuePaused = createMemo(() => store.queuePaused ?? false)
+  const writeQueue = (next: AutopilotQueueItem[]) => {
+    const trimmed = next.slice(0, 50)
+    setStore("queue", trimmed)
+  }
+  const queueGoal = (goalText: string): boolean => {
+    const trimmed = goalText.trim()
+    if (!trimmed) {
+      showToast({
+        variant: "error",
+        title: "Goal required",
+        description: "Type a goal before queueing.",
+      })
+      return false
+    }
+    const currentModel = model()
+    const currentAgent = agent()
+    if (!currentModel || !currentAgent) {
+      showToast({
+        variant: "error",
+        title: "Model and agent required",
+        description: "Choose a connected model and agent before queueing.",
+      })
+      return false
+    }
+    const workspaces = normalizeAutopilotWorkspaces(sdk.directory, targetWorkspaces())
+    if (!workspaces.length) {
+      showToast({
+        variant: "error",
+        title: "Pick a codebase",
+        description: "Choose at least one codebase before queueing this goal.",
+      })
+      return false
+    }
+    setTargetWorkspaces(workspaces)
+    let item: AutopilotQueueItem
+    try {
+      item = createAutopilotQueueItem({
+        goal: trimmed,
+        workspaces,
+        agent: currentAgent,
+        model: currentModel,
+      })
+    } catch (err) {
+      showToast({
+        variant: "error",
+        title: "Could not queue",
+        description: err instanceof Error ? err.message : String(err),
+      })
+      return false
+    }
+    writeQueue([...queue(), item])
+    setGoal("")
+    showToast({
+      title: "Queued",
+      description: `Autopilot will run "${item.goal.slice(0, 60)}${item.goal.length > 60 ? "…" : ""}" after the current task.`,
+    })
+    return true
+  }
+  const removeQueueItem = (id: string) => {
+    writeQueue(queue().filter((item) => item.id !== id))
+  }
+  const moveQueueItem = (id: string, direction: "up" | "down") => {
+    const items = queue()
+    const index = items.findIndex((item) => item.id === id)
+    if (index < 0) return
+    const targetIndex = direction === "up" ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= items.length) return
+    const next = items.slice()
+    const [moved] = next.splice(index, 1)
+    if (!moved) return
+    next.splice(targetIndex, 0, moved)
+    writeQueue(next)
+  }
+  const clearQueue = () => writeQueue([])
+  const toggleQueuePaused = () => setStore("queuePaused", !queuePaused())
+  const isRunActive = createMemo(() => {
+    const current = run()
+    if (!current) return false
+    return current.status === "running" || current.status === "paused"
+  })
+  const drainQueue = async () => {
+    if (queuePaused()) return
+    const items = queue()
+    const next = items[0]
+    if (!next) return
+    if (isRunActive()) return
+    const currentModel = next.model ?? model()
+    const currentAgent = next.agent ?? agent()
+    if (!currentModel || !currentAgent) {
+      showToast({
+        variant: "error",
+        title: "Cannot start next queued task",
+        description: "Connect a model and agent before the queue can drain.",
+      })
+      return
+    }
+    writeQueue(items.slice(1))
+    setGoal(next.goal)
+    setTargetWorkspaces(next.workspaces)
+    await start()
+  }
+  const startTopQueued = () => {
+    void drainQueue()
+  }
+  let lastDrainTrigger: string | undefined = (() => {
+    const initial = run()
+    return initial?.status === "completed" ? initial.runID : undefined
+  })()
+  createEffect(() => {
+    const current = run()
+    if (!current) return
+    if (current.status !== "completed") return
+    if (lastDrainTrigger === current.runID) return
+    lastDrainTrigger = current.runID
+    if (queuePaused() || queue().length === 0) return
+    void drainQueue()
+  })
 
   const templateSelection = createMemo(() => run()?.templateSelection)
   const templateSelectionStatusLabel = (status: AutopilotTemplateSelection["status"]) => {
@@ -1984,13 +2111,23 @@ export function AutopilotPanel(props: {
           <Button
             variant="ghost"
             class="h-10 flex-1 px-3 text-12-medium"
+            disabled={!goal().trim() || submitting()}
+            onClick={() => queueGoal(goal())}
+          >
+            {isRunActive() ? `Queue (#${queueLength() + 1})` : "Add to queue"}
+          </Button>
+        </div>
+        <div class="flex">
+          <Button
+            variant="ghost"
+            class="h-9 flex-1 px-3 text-12-medium"
             disabled={!run()}
             onClick={() => {
               const current = run()
               if (current) attach(current)
             }}
           >
-            Attach current run
+            Attach current run to chat
           </Button>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -2167,6 +2304,118 @@ export function AutopilotPanel(props: {
         </Button>
       </div>
     </div>
+  )
+
+  const formatQueueAge = (queuedAt: string) => {
+    const diff = clock() - Date.parse(queuedAt)
+    if (!Number.isFinite(diff) || diff < 0) return "just now"
+    const seconds = Math.floor(diff / 1000)
+    if (seconds < 30) return "just now"
+    if (seconds < 60) return `${seconds}s ago`
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    return `${hours}h ago`
+  }
+
+  const QueueCard = () => (
+    <Show when={queueLength() > 0 || queuePaused()}>
+      <div class="rounded-[18px] border border-border-weaker-base bg-surface-base">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border-weaker-base px-4 py-3">
+          <div class="flex items-center gap-2">
+            <Icon name="checklist" class="size-4 text-icon-info-base" />
+            <div>
+              <div class="text-14-bold text-text-base">Up next</div>
+              <div class="mt-0.5 text-11-medium text-text-weak">
+                <Show when={queuePaused()} fallback="Auto-starts when the active run finishes.">
+                  Queue is paused. Resume to auto-start the next task.
+                </Show>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="rounded-full border border-border-weaker-base bg-background-base px-2 py-1 text-11-medium text-text-weak">
+              {queueLength()} queued
+            </span>
+            <Show when={queueLength() > 0 && !isRunActive() && !queuePaused()}>
+              <Button variant="ghost" class="h-8 px-3 text-11-medium" onClick={startTopQueued}>
+                Start next now
+              </Button>
+            </Show>
+            <Button variant="ghost" class="h-8 px-3 text-11-medium" onClick={toggleQueuePaused}>
+              {queuePaused() ? "Resume queue" : "Pause queue"}
+            </Button>
+            <Show when={queueLength() > 0}>
+              <Button variant="ghost" class="h-8 px-3 text-11-medium" onClick={clearQueue}>
+                Clear all
+              </Button>
+            </Show>
+          </div>
+        </div>
+        <Show
+          when={queueLength() > 0}
+          fallback={
+            <div class="px-4 py-6 text-12-medium text-text-weak">
+              No queued tasks. Type a new goal above and pick "Add to queue".
+            </div>
+          }
+        >
+          <div class="grid gap-2 p-3">
+            <For each={queue()}>
+              {(item, index) => (
+                <div class="flex items-start gap-3 rounded-[14px] border border-border-weaker-base bg-background-stronger px-3 py-3">
+                  <div class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-border-weaker-base bg-background-base text-12-bold text-text-base">
+                    {index() + 1}
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="line-clamp-2 text-13-medium leading-5 text-text-base">{item.goal}</div>
+                    <div class="mt-1 flex flex-wrap items-center gap-2 text-10-medium text-text-weak">
+                      <span>{item.workspaces.length === 1 ? "1 codebase" : `${item.workspaces.length} codebases`}</span>
+                      <span class="text-border-strong-base">·</span>
+                      <span>Queued {formatQueueAge(item.queuedAt)}</span>
+                      <Show when={item.agent || item.model}>
+                        <span class="text-border-strong-base">·</span>
+                        <span class="truncate">
+                          {item.agent ?? "agent"} / {item.model ? formatAutopilotModel(item.model) : "model"}
+                        </span>
+                      </Show>
+                    </div>
+                  </div>
+                  <div class="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      aria-label="Move up"
+                      class="flex size-7 items-center justify-center rounded-full border border-border-weaker-base bg-background-base text-text-weak transition-colors hover:border-blue-500/40 hover:text-blue-300 disabled:opacity-40"
+                      disabled={index() === 0}
+                      onClick={() => moveQueueItem(item.id, "up")}
+                    >
+                      <Icon name="arrow-left" class="size-3 rotate-90" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Move down"
+                      class="flex size-7 items-center justify-center rounded-full border border-border-weaker-base bg-background-base text-text-weak transition-colors hover:border-blue-500/40 hover:text-blue-300 disabled:opacity-40"
+                      disabled={index() === queueLength() - 1}
+                      onClick={() => moveQueueItem(item.id, "down")}
+                    >
+                      <Icon name="arrow-left" class="size-3 -rotate-90" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Remove from queue"
+                      class="flex size-7 items-center justify-center rounded-full border border-border-weaker-base bg-background-base text-text-weak transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300"
+                      onClick={() => removeQueueItem(item.id)}
+                    >
+                      <Icon name="trash" class="size-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+      </div>
+    </Show>
   )
 
   const TemplateSelectionCard = () => (
@@ -2611,6 +2860,7 @@ export function AutopilotPanel(props: {
 
               <div class="grid content-start gap-4">
                 <RunSetup />
+                <QueueCard />
                 <ActivityPreview />
               </div>
             </div>
@@ -2684,6 +2934,8 @@ export function AutopilotPanel(props: {
           <LiveRunStatus />
 
           <TemplateSelectionCard />
+
+          <QueueCard />
 
           <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
             <ActivityTimeline />

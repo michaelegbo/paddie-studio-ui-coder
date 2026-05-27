@@ -144,6 +144,24 @@ export type CreateAutopilotRunInput = {
   now?: string
 }
 
+export type AutopilotQueueItem = {
+  id: string
+  goal: string
+  workspaces: string[]
+  agent?: string
+  model?: AutopilotModelSelection
+  queuedAt: string
+}
+
+export type CreateAutopilotQueueItemInput = {
+  goal: string
+  workspaces: string[]
+  agent?: string
+  model?: AutopilotModelSelection
+  id?: string
+  now?: string
+}
+
 const MAX_GOAL = 4_000
 const MAX_EVENT_BODY = 1_500
 const MAX_EVENT_DETAIL = 24_000
@@ -158,6 +176,7 @@ const MAX_WORKFLOW_CODE_CONTEXT = 16_000
 const MAX_WORKFLOW_GRAPH_CONTEXT = 16_000
 const MAX_AUTOPILOT_TASKS = 20
 const MAX_AUTOPILOT_WORKSPACES = 8
+const MAX_AUTOPILOT_QUEUE = 50
 
 const fallbackSafeguards = [
   "Autopilot runs in its own scoped opencode session and does not type into or submit the normal chat composer.",
@@ -280,6 +299,64 @@ export function createAutopilotRun(input: CreateAutopilotRunInput): AutopilotRun
     createdAt: now,
     updatedAt: now,
   }
+}
+
+export function createAutopilotQueueItem(input: CreateAutopilotQueueItemInput): AutopilotQueueItem {
+  const goal = normalizeAutopilotGoal(input.goal)
+  const workspaces = normalizeAutopilotWorkspaces(input.workspaces[0] ?? "", input.workspaces)
+  if (!workspaces.length) throw new Error("Pick at least one workspace before queueing the task.")
+  const now = input.now ?? new Date().toISOString()
+  const id = input.id ?? `queue-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+  return {
+    id,
+    goal,
+    workspaces,
+    agent: input.agent,
+    model: input.model ? { ...input.model } : undefined,
+    queuedAt: now,
+  }
+}
+
+function sanitizeAutopilotQueueItem(item: unknown): AutopilotQueueItem | undefined {
+  if (!isRecord(item)) return undefined
+  if (typeof item.goal !== "string") return undefined
+  const goal = item.goal.trim()
+  if (!goal) return undefined
+  const workspaces = Array.isArray(item.workspaces)
+    ? item.workspaces.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    : []
+  if (!workspaces.length) return undefined
+  const modelValue = isRecord(item.model)
+    && typeof item.model.providerID === "string"
+    && typeof item.model.modelID === "string"
+    ? {
+        providerID: item.model.providerID,
+        modelID: item.model.modelID,
+        variant: typeof item.model.variant === "string" ? item.model.variant : undefined,
+      }
+    : undefined
+  return {
+    id: typeof item.id === "string" && item.id ? item.id : `queue-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    goal: goal.slice(0, MAX_GOAL),
+    workspaces,
+    agent: typeof item.agent === "string" ? item.agent : undefined,
+    model: modelValue,
+    queuedAt: typeof item.queuedAt === "string" ? item.queuedAt : new Date().toISOString(),
+  }
+}
+
+export function sanitizeAutopilotQueue(value: unknown): AutopilotQueueItem[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  const result: AutopilotQueueItem[] = []
+  for (const raw of value) {
+    if (result.length >= MAX_AUTOPILOT_QUEUE) break
+    const sanitized = sanitizeAutopilotQueueItem(raw)
+    if (!sanitized || seen.has(sanitized.id)) continue
+    seen.add(sanitized.id)
+    result.push(sanitized)
+  }
+  return result
 }
 
 export function transitionAutopilotRun(run: AutopilotRun, status: AutopilotRunStatus, now = new Date().toISOString()) {
@@ -510,11 +587,15 @@ export function migrateAutopilotStore(value: unknown) {
   const normalized = dedupeAutopilotRuns(runs.length ? runs : current ? [current] : [])
   const currentRunID = typeof value.currentRunID === "string" ? value.currentRunID : current?.runID ?? normalized[0]?.runID
   const selected = normalized.find((item) => item.runID === currentRunID) ?? current ?? normalized[0]
+  const queue = sanitizeAutopilotQueue(value.queue)
+  const queuePaused = typeof value.queuePaused === "boolean" ? value.queuePaused : false
   return {
     ...value,
     current: selected,
     currentRunID: selected?.runID,
     runs: normalized,
+    queue,
+    queuePaused,
   }
 }
 
