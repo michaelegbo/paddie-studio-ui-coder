@@ -790,6 +790,12 @@ export function autopilotHandoffFromText(value: string) {
   return value.trim()
 }
 
+const HANDOFF_MARKER = /PADDIE_AUTOPILOT_HANDOFF:/i
+
+export function autopilotHasHandoff(value: string) {
+  return HANDOFF_MARKER.test(value)
+}
+
 export function autopilotPhaseStatuses(phase: AutopilotPhase): Partial<Record<AutopilotPlanStep["id"], AutopilotStepStatus>> {
   if (phase === "planning") return { understand: "done", gather: "active", plan: "active" }
   if (phase === "gathering") return { understand: "done", gather: "active", plan: "pending" }
