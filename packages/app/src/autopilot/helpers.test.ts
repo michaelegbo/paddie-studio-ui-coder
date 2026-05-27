@@ -5,6 +5,7 @@ import {
   autopilotGoalNeedsTemplate,
   autopilotGoalNeedsWorkflow,
   autopilotHandoffFromText,
+  autopilotHasHandoff,
   autopilotPhaseFromText,
   autopilotPhaseStatuses,
   autopilotTaskQueueFromText,
@@ -268,6 +269,13 @@ PADDIE_AUTOPILOT_HANDOFF:
 Outcome: Done
 Changed files: app.tsx`),
     ).toBe("Outcome: Done\nChanged files: app.tsx")
+  })
+
+  test("autopilotHasHandoff detects the worker completion marker anywhere in the text", () => {
+    expect(autopilotHasHandoff("just chatting, nothing special")).toBe(false)
+    expect(autopilotHasHandoff("Halfway done\nPADDIE_AUTOPILOT_HANDOFF:\nOutcome: ok")).toBe(true)
+    expect(autopilotHasHandoff("PADDIE_AUTOPILOT_HANDOFF: shorthand")).toBe(true)
+    expect(autopilotHasHandoff("paddie_autopilot_handoff: case-insensitive too")).toBe(true)
   })
 
   test("classifies approval-gated actions", () => {

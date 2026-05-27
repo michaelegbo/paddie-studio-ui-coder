@@ -12,6 +12,7 @@ import {
   autopilotGoalNeedsTemplate,
   autopilotGoalNeedsWorkflow,
   autopilotHandoffFromText,
+  autopilotHasHandoff,
   autopilotPlanFromRun,
   autopilotPhaseFromText,
   autopilotPhaseStatuses,
@@ -912,6 +913,12 @@ export function AutopilotPanel(props: {
       scanWorkerOutput(current, messages, partsByMessage)
       const idle = (workspaceStore.session_status[sessionID]?.type ?? "idle") === "idle"
       const hasResponse = assistantMessageCount(workspace, sessionID) > assistantCountBefore
+      const workerText = workerPlainText(workspace, sessionID, { assistantStart: assistantCountBefore })
+      const handoffSeen = autopilotHasHandoff(workerText)
+      if (handoffSeen) {
+        globalSync.child(workspace)[1]("session_status", sessionID, { type: "idle" })
+        return
+      }
       if ((idle && hasResponse) || workerResponseSettled(messages, partsByMessage, assistantCountBefore)) return
       const elapsed = Date.now() - started
       if (elapsed >= WAIT_NOTICE_MS && elapsed - lastNoticeAt >= WAIT_NOTICE_INTERVAL_MS) {
@@ -1145,6 +1152,39 @@ export function AutopilotPanel(props: {
         current = updateAutopilotTaskQueue(runByID(current.runID) ?? current, plannedTasks)
         setRun(current, select)
       }
+
+      if (autopilotHasHandoff(plannerOutput)) {
+        current = runByID(current.runID) ?? current
+        if (current && current.status !== "stopped") {
+          const earlySelection = current.templateSelection
+          if (earlySelection && (earlySelection.status === "chosen" || earlySelection.status === "applying") && earlySelection.id) {
+            current = setAutopilotTemplateSelection(current, { ...earlySelection, status: "applied" })
+            setRun(current, select)
+          }
+          current = addRunEventFor(
+            current,
+            {
+              id: `${current.runID}:planner-handoff`,
+              source: "autopilot",
+              title: "Worker handed off during planning",
+              body: "Worker completed the goal in a single pass — skipping the implementation and verification prompts and using its handoff summary directly.",
+              at: new Date().toISOString(),
+            },
+          )
+          const earlySummary = finalSummary(workspace, sessionID, plannerBefore)
+          current = addAutopilotEvent(current, {
+            id: `${current.runID}:handoff`,
+            source: "opencode",
+            title: "Worker handed results back",
+            body: earlySummary,
+            detail: earlySummary,
+            at: new Date().toISOString(),
+          })
+          setRun(current, select)
+          setRun(completeAutopilotRun(current, earlySummary), select)
+        }
+        return
+      }
       const plannerTemplatePick = selectedTemplateFromText(plannerOutput)
       const selectedWorkflow = selectedWorkflowFromText(plannerOutput)
 
@@ -1244,6 +1284,32 @@ export function AutopilotPanel(props: {
             at: new Date().toISOString(),
           },
         )
+      }
+
+      const implementationOutput = workerPlainText(workspace, sessionID, { assistantStart: workerBefore })
+      if (autopilotHasHandoff(implementationOutput)) {
+        current = addRunEventFor(
+          current,
+          {
+            id: `${current.runID}:implement-handoff`,
+            source: "autopilot",
+            title: "Worker handed off during implementation",
+            body: "Worker emitted its handoff block while implementing — skipping the verification prompt and finalising the run.",
+            at: new Date().toISOString(),
+          },
+        )
+        const implSummary = finalSummary(workspace, sessionID, workerBefore)
+        current = addAutopilotEvent(current, {
+          id: `${current.runID}:handoff`,
+          source: "opencode",
+          title: "Worker handed results back",
+          body: implSummary,
+          detail: implSummary,
+          at: new Date().toISOString(),
+        })
+        setRun(current, select)
+        setRun(completeAutopilotRun(current, implSummary), select)
+        return
       }
 
       const verifyBefore = assistantMessageCount(workspace, sessionID)
