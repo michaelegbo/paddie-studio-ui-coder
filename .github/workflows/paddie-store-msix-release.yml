@@ -1,0 +1,162 @@
+name: paddie-store-msix-release
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to package"
+        required: true
+        default: "dev"
+        type: string
+      version:
+        description: "MSIX version, without leading v"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish-store-msix:
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
+    runs-on: windows-latest
+    env:
+      PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID || secrets.AZURE_AD_TENANT_ID }}
+      PARTNER_CENTER_SELLER_ID: ${{ secrets.PARTNER_CENTER_SELLER_ID || secrets.SELLER_ID }}
+      PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID || secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+      PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET || secrets.AZURE_AD_APPLICATION_SECRET }}
+      MICROSOFT_STORE_PRODUCT_ID: ${{ secrets.PARTNER_CENTER_PRODUCT_ID || secrets.MICROSOFT_STORE_PRODUCT_ID }}
+      MSIX_PACKAGE_IDENTITY_NAME: ${{ secrets.MSIX_PACKAGE_IDENTITY_NAME }}
+      MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
+      MSIX_PUBLISHER_DISPLAY_NAME: ${{ secrets.MSIX_PUBLISHER_DISPLAY_NAME }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.ref }}
+
+      - uses: ./.github/actions/setup-bun
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup Microsoft Store CLI
+        uses: microsoft/microsoft-store-apppublisher@v1.1
+
+      - name: Resolve release version
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ("${{ github.event_name }}" -eq "release") {
+            "${{ github.event.release.tag_name }}".TrimStart("v")
+          } else {
+            "${{ inputs.version }}"
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:[.-].*)?$') {
+            throw "Version '$version' must start with major.minor.patch"
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Validate Store secrets
+        shell: pwsh
+        run: |
+          @(
+            "PARTNER_CENTER_TENANT_ID",
+            "PARTNER_CENTER_SELLER_ID",
+            "PARTNER_CENTER_CLIENT_ID",
+            "PARTNER_CENTER_CLIENT_SECRET",
+            "MICROSOFT_STORE_PRODUCT_ID",
+            "MSIX_PACKAGE_IDENTITY_NAME",
+            "MSIX_PUBLISHER",
+            "MSIX_PUBLISHER_DISPLAY_NAME"
+          ) | ForEach-Object {
+            if (-not [Environment]::GetEnvironmentVariable($_)) {
+              throw "$_ is required for Microsoft Store publishing"
+            }
+          }
+
+      - name: Set desktop version
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $packagePath = "packages/desktop/package.json"
+          $package = Get-Content -Raw -LiteralPath $packagePath | ConvertFrom-Json
+          $package.version = $version
+          $package | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $packagePath
+
+          $cargoPath = "packages/desktop/src-tauri/Cargo.toml"
+          $cargo = Get-Content -Raw -LiteralPath $cargoPath
+          $cargo = $cargo -replace '(?m)^version = "[^"]+"', "version = `"$version`""
+          Set-Content -LiteralPath $cargoPath -Value $cargo
+
+          Push-Location packages/desktop/src-tauri
+          cargo update -p opencode-desktop
+          Pop-Location
+
+      - name: Reinstall dependencies for Bun compile
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue
+          Get-ChildItem -LiteralPath packages -Directory | ForEach-Object {
+            Remove-Item -Recurse -Force (Join-Path $_.FullName "node_modules") -ErrorAction SilentlyContinue
+          }
+          bun install
+
+      - name: Build sidecar CLI
+        shell: pwsh
+        run: |
+          bun ./packages/opencode/script/build.ts --single --baseline
+          New-Item -ItemType Directory -Force -Path packages/desktop/src-tauri/sidecars | Out-Null
+          $binary = Get-ChildItem -LiteralPath packages/opencode/dist -Recurse -Filter opencode.exe |
+            Where-Object { $_.FullName -match "opencode-windows-x64" } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $binary) {
+            throw "No Windows opencode.exe sidecar was produced"
+          }
+          Copy-Item `
+            -LiteralPath $binary.FullName `
+            -Destination packages/desktop/src-tauri/sidecars/opencode-cli-x86_64-pc-windows-msvc.exe `
+            -Force
+
+      - name: Build Tauri executable
+        shell: pwsh
+        env:
+          RUST_TARGET: x86_64-pc-windows-msvc
+          TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
+          OPENCODE_CHANNEL: prod
+          VITE_OPENCODE_CHANNEL: prod
+        run: |
+          bun run --cwd packages/desktop tauri build --target x86_64-pc-windows-msvc --no-bundle --config src-tauri/tauri.prod.conf.json
+
+      - name: Package MSIX
+        id: package
+        shell: pwsh
+        run: |
+          ./packages/desktop/scripts/package-store-msix.ps1 -Version "${{ steps.version.outputs.version }}"
+
+      - name: Configure Microsoft Store credentials
+        shell: pwsh
+        run: |
+          msstore reconfigure `
+            --tenantId "$env:PARTNER_CENTER_TENANT_ID" `
+            --sellerId "$env:PARTNER_CENTER_SELLER_ID" `
+            --clientId "$env:PARTNER_CENTER_CLIENT_ID" `
+            --clientSecret "$env:PARTNER_CENTER_CLIENT_SECRET"
+
+      - name: Publish MSIX to Microsoft Store
+        shell: pwsh
+        run: |
+          msstore publish "." `
+            --inputFile "${{ steps.package.outputs.msix }}" `
+            --appId "$env:MICROSOFT_STORE_PRODUCT_ID"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: paddie-store-msix-${{ steps.version.outputs.version }}
+          path: ${{ steps.package.outputs.msix }}
