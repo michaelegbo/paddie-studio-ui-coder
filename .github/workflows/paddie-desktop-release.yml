@@ -37,6 +37,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
 
       - uses: ./.github/actions/setup-bun
 
@@ -177,6 +180,7 @@ jobs:
           $version = "${{ inputs.version }}"
           $channel = "${{ inputs.channel }}"
           $tag = "v$version"
+          $target = (git rev-parse HEAD).Trim()
           $isBeta = $channel -eq "beta"
           $isDev = $channel -eq "dev"
           $title = if ($isBeta) { "Paddie Studio $version Beta" } elseif ($isDev) { "Paddie Studio $version Dev" } else { "Paddie Studio $version" }
@@ -188,7 +192,7 @@ jobs:
 
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -ne 0) {
-            $releaseArgs = @("release", "create", $tag, "--repo", $env:GITHUB_REPOSITORY, "--target", $env:GITHUB_SHA, "--title", $title, "--notes", $notes)
+            $releaseArgs = @("release", "create", $tag, "--repo", $env:GITHUB_REPOSITORY, "--target", $target, "--title", $title, "--notes", $notes)
             if ($isBeta -or $isDev) {
               $releaseArgs += "--prerelease"
             }
@@ -207,12 +211,12 @@ jobs:
             $rollingTitle = if ($isBeta) { "Paddie Studio Beta Channel" } else { "Paddie Studio Dev Channel" }
             $rollingNotes = if ($isBeta) { "Rolling beta update manifest." } else { "Rolling dev update manifest." }
 
-            git tag -f $rollingTag $env:GITHUB_SHA
+            git tag -f $rollingTag $target
             git push origin "refs/tags/$rollingTag" --force
 
             gh release view $rollingTag --repo $env:GITHUB_REPOSITORY *> $null
             if ($LASTEXITCODE -ne 0) {
-              gh release create $rollingTag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $rollingTitle --notes $rollingNotes --prerelease
+              gh release create $rollingTag --repo $env:GITHUB_REPOSITORY --target $target --title $rollingTitle --notes $rollingNotes --prerelease
             }
 
             gh release upload $rollingTag "${{ steps.assets.outputs.manifest }}" --clobber --repo $env:GITHUB_REPOSITORY

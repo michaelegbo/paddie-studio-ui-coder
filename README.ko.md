@@ -1,129 +1,276 @@
 <p align="center">
-  <a href="https://opencode.ai">
-    <picture>
-      <source srcset="packages/console/app/src/asset/logo-ornate-dark.svg" media="(prefers-color-scheme: dark)">
-      <source srcset="packages/console/app/src/asset/logo-ornate-light.svg" media="(prefers-color-scheme: light)">
-      <img src="packages/console/app/src/asset/logo-ornate-light.svg" alt="OpenCode logo">
-    </picture>
-  </a>
+  <img src="packages/desktop/app-icon.svg" alt="Paddie Studio icon" width="80" height="80">
 </p>
-<p align="center">오픈 소스 AI 코딩 에이전트.</p>
+
+<h1 align="center">Paddie Studio</h1>
+
 <p align="center">
-  <a href="https://opencode.ai/discord"><img alt="Discord" src="https://img.shields.io/discord/1391832426048651334?style=flat-square&label=discord" /></a>
-  <a href="https://www.npmjs.com/package/opencode-ai"><img alt="npm" src="https://img.shields.io/npm/v/opencode-ai?style=flat-square" /></a>
-  <a href="https://github.com/anomalyco/opencode/actions/workflows/publish.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/anomalyco/opencode/publish.yml?style=flat-square&branch=dev" /></a>
+  A unified visual environment for designing, previewing, and shaping production code with AI.
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> |
-  <a href="README.zh.md">简体中文</a> |
-  <a href="README.zht.md">繁體中文</a> |
-  <a href="README.ko.md">한국어</a> |
-  <a href="README.de.md">Deutsch</a> |
-  <a href="README.es.md">Español</a> |
-  <a href="README.fr.md">Français</a> |
-  <a href="README.it.md">Italiano</a> |
-  <a href="README.da.md">Dansk</a> |
-  <a href="README.ja.md">日本語</a> |
-  <a href="README.pl.md">Polski</a> |
-  <a href="README.ru.md">Русский</a> |
-  <a href="README.bs.md">Bosanski</a> |
-  <a href="README.ar.md">العربية</a> |
-  <a href="README.no.md">Norsk</a> |
-  <a href="README.br.md">Português (Brasil)</a> |
-  <a href="README.th.md">ไทย</a> |
-  <a href="README.tr.md">Türkçe</a> |
-  <a href="README.uk.md">Українська</a> |
-  <a href="README.bn.md">বাংলা</a> |
-  <a href="README.gr.md">Ελληνικά</a> |
-  <a href="README.vi.md">Tiếng Việt</a>
+  Build visually.
+  |
+  Direct the assistant.
+  |
+  Export the codebase anytime.
+  |
+  <a href="#development">Development</a>
+  |
+  <a href="#desktop-builds">Desktop builds</a>
 </p>
 
-[![OpenCode Terminal UI](packages/web/src/assets/lander/screenshot.png)](https://opencode.ai)
-
 ---
 
-### 설치
+Paddie Studio is built to collapse the distance between chat, canvas, and code.
+Instead of bouncing between a browser preview, an editor, and an assistant thread, you stay in one workspace where you can inspect a live app, select real UI elements, attach templates, and ask the assistant to implement changes directly against the project.
+
+Today, the core experience centers on:
+
+- a Studio shell that keeps chat and product work side by side
+- a live browser canvas that follows the running localhost app
+- direct code editing with a real filesystem and Monaco tabs
+- template-driven building for pages and reusable sections
+- element picking from preview into chat context
+
+Paddie Studio is being shaped toward a broader visual development workflow that combines interface building, reusable templates and components, richer project memory, and more automation over time.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src=".github/assets/readme/paddie-preview.png" alt="Paddie Studio preview workspace" />
+      <p><strong>Studio + live preview</strong><br>Chat, Studio controls, and the live browser canvas all stay visible in one desktop workflow.</p>
+    </td>
+    <td width="50%">
+      <img src=".github/assets/readme/paddie-templates.png" alt="Paddie Studio templates surface" />
+      <p><strong>Templates surface</strong><br>Browse bundled starters, inspect curated parts, and attach full templates or selected sections into chat.</p>
+    </td>
+  </tr>
+</table>
+
+## Introducing Paddie Studio
+
+### Design. Preview. Iterate.
+
+Paddie Studio combines a visual product workspace with an AI co-developer so you can move from idea to implementation without switching tools every few minutes.
+
+The Studio surface keeps these views close together:
+
+- `Code`
+- `Split`
+- `Preview`
+- `Templates`
+
+That means you can inspect the product, edit the source, and direct the assistant from one place.
+
+### Visual interface workflow
+
+The current Studio workflow is centered on a live, product-facing canvas:
+
+- preview follows the active localhost app automatically
+- desktop, tablet, and mobile viewport switching
+- real desktop viewport presets including `1920x1080`, `1600x900`, and `1440x900`
+- direct element selection from the preview into chat
+- responsive Studio resizing beside chat
+
+If you want to work manually, the same shell also gives you:
+
+- filesystem explorer for the current project
+- Monaco editor tabs
+- direct typing and editing in code
+- autosave by default
+
+### Your AI co-developer lives inside the editor
+
+Instead of describing changes against a vague screenshot, you can work with real project context:
+
+- ask the assistant to run the app
+- let preview follow the running URL
+- pick real elements from the page
+- attach files, template parts, and selected targets to the prompt
+- ask the assistant to apply changes with that context already attached
+
+This is the core Paddie Studio loop today.
+
+### Start with a template
+
+Paddie Studio includes a bundled template system for reference-driven building:
+
+- browse a starter visually
+- attach a full template to chat
+- attach curated parts like hero, CTA, button, modal, navbar, and metrics
+- select parts directly from the template preview
+- create a starter project from the bundled template
+
+The current seeded template is a React + Tailwind landing-page starter, and the longer-term direction is to expand this into a richer component and template ecosystem.
+
+## Product Direction
+
+Paddie Studio is being shaped toward a broader visual development system built around three bigger ideas:
+
+### 1. Production-ready templates and components
+
+The template system is meant to grow beyond a single starter into a reusable library of:
+
+- full-page starters
+- curated sections
+- reusable components
+- community and marketplace-style building blocks over time
+
+### 2. Visual automation and workflow building
+
+The longer-term goal is not just UI generation, but a workspace where interface building and backend workflow orchestration can live closer together, so design, logic, and automation are part of one system instead of separate tools.
+
+### 3. Smarter project memory
+
+Paddie Studio is also being steered toward deeper memory and context handling, so the assistant becomes better at:
+
+- remembering project structure
+- reusing prior design and implementation decisions
+- applying richer context across multiple iterations
+
+## Workflow
+
+### Build with AI
+
+1. Open a project in Paddie Studio.
+2. Ask the assistant to run the app.
+3. Let the preview follow the running localhost URL automatically.
+4. Pick elements in the preview or attach a template.
+5. Ask the assistant to modify the selected target.
+6. Edit code directly when you want manual control.
+
+### Start from a template
+
+1. Open `Templates` inside Studio.
+2. Browse the bundled starter.
+3. Attach the full template or a selected part to chat.
+4. Ask the assistant to adapt it into the current page.
+
+Or:
+
+1. Use `Create starter project`.
+2. Choose a destination folder.
+3. Open the new project in Studio and continue from there.
+
+## Open Source and Upstream
+
+Paddie Studio is an official public fork of OpenCode:
+
+- fork: [michaelegbo/opencode](https://github.com/michaelegbo/opencode)
+- upstream: [anomalyco/opencode](https://github.com/anomalyco/opencode)
+
+That relationship matters for maintenance, but it is not the product story.
+The fork stays structurally close to upstream so new OpenCode changes can still be pulled in, while Paddie Studio focuses the product layer around:
+
+- desktop-first usage
+- visual UI building
+- richer preview workflows
+- templates and reusable product patterns
+- branded packaging and app identity
+
+## Development
+
+### Prerequisites
+
+- [Bun](https://bun.sh/)
+- Rust toolchain for the Tauri desktop app
+- Windows is the current tested desktop packaging path
+
+### Install
 
 ```bash
-# YOLO
-curl -fsSL https://opencode.ai/install | bash
-
-# 패키지 매니저
-npm i -g opencode-ai@latest        # bun/pnpm/yarn 도 가능
-scoop install opencode             # Windows
-choco install opencode             # Windows
-brew install anomalyco/tap/opencode # macOS 및 Linux (권장, 항상 최신)
-brew install opencode              # macOS 및 Linux (공식 brew formula, 업데이트 빈도 낮음)
-sudo pacman -S opencode            # Arch Linux (Stable)
-paru -S opencode-bin               # Arch Linux (Latest from AUR)
-mise use -g opencode               # 어떤 OS든
-nix run nixpkgs#opencode           # 또는 github:anomalyco/opencode 로 최신 dev 브랜치
+bun install
 ```
 
-> [!TIP]
-> 설치 전에 0.1.x 보다 오래된 버전을 제거하세요.
-
-### 데스크톱 앱 (BETA)
-
-OpenCode 는 데스크톱 앱으로도 제공됩니다. [releases page](https://github.com/anomalyco/opencode/releases) 에서 직접 다운로드하거나 [opencode.ai/download](https://opencode.ai/download) 를 이용하세요.
-
-| 플랫폼                | 다운로드                           |
-| --------------------- | ---------------------------------- |
-| macOS (Apple Silicon) | `opencode-desktop-mac-arm64.dmg`   |
-| macOS (Intel)         | `opencode-desktop-mac-x64.dmg`     |
-| Windows               | `opencode-desktop-windows-x64.exe` |
-| Linux                 | `.deb`, `.rpm`, 또는 AppImage      |
+### Run the web app
 
 ```bash
-# macOS (Homebrew)
-brew install --cask opencode-desktop
-# Windows (Scoop)
-scoop bucket add extras; scoop install extras/opencode-desktop
+bun run dev:web
 ```
 
-#### 설치 디렉터리
-
-설치 스크립트는 설치 경로를 다음 우선순위로 결정합니다.
-
-1. `$OPENCODE_INSTALL_DIR` - 사용자 지정 설치 디렉터리
-2. `$XDG_BIN_DIR` - XDG Base Directory Specification 준수 경로
-3. `$HOME/bin` - 표준 사용자 바이너리 디렉터리 (존재하거나 생성 가능할 경우)
-4. `$HOME/.opencode/bin` - 기본 폴백
+### Run the desktop app
 
 ```bash
-# 예시
-OPENCODE_INSTALL_DIR=/usr/local/bin curl -fsSL https://opencode.ai/install | bash
-XDG_BIN_DIR=$HOME/.local/bin curl -fsSL https://opencode.ai/install | bash
+bun run dev:desktop
 ```
 
-### Agents
+### Typecheck
 
-OpenCode 에는 내장 에이전트 2개가 있으며 `Tab` 키로 전환할 수 있습니다.
+Run typechecks from package directories, not from the repo root:
 
-- **build** - 기본값, 개발 작업을 위한 전체 권한 에이전트
-- **plan** - 분석 및 코드 탐색을 위한 읽기 전용 에이전트
-  - 기본적으로 파일 편집을 거부
-  - bash 명령 실행 전에 권한을 요청
-  - 낯선 코드베이스를 탐색하거나 변경을 계획할 때 적합
+```bash
+cd packages/app
+bun run typecheck
 
-또한 복잡한 검색과 여러 단계 작업을 위한 **general** 서브 에이전트가 포함되어 있습니다.
-내부적으로 사용되며, 메시지에서 `@general` 로 호출할 수 있습니다.
+cd ../desktop
+bun run typecheck
+```
 
-[agents](https://opencode.ai/docs/agents) 에 대해 더 알아보세요.
+## Desktop Builds
 
-### 문서
+Build the desktop installer from the desktop package:
 
-OpenCode 설정에 대한 자세한 내용은 [**문서**](https://opencode.ai/docs) 를 참고하세요.
+```bash
+cd packages/desktop
+bun run tauri build
+```
 
-### 기여하기
+Windows artifacts are written to:
 
-OpenCode 에 기여하고 싶다면, Pull Request 를 제출하기 전에 [contributing docs](./CONTRIBUTING.md) 를 읽어주세요.
+- `packages/desktop/src-tauri/target/release/PaddieStudio.exe`
+- `packages/desktop/src-tauri/target/release/bundle/nsis/`
 
-### OpenCode 기반으로 만들기
+## Repository Layout
 
-OpenCode 와 관련된 프로젝트를 진행하면서 이름에 "opencode"(예: "opencode-dashboard" 또는 "opencode-mobile") 를 포함한다면, README 에 해당 프로젝트가 OpenCode 팀이 만든 것이 아니며 어떤 방식으로도 우리와 제휴되어 있지 않다는 점을 명시해 주세요.
+- `packages/app` - main UI, Studio shell, templates, preview, and editor integration
+- `packages/desktop` - Tauri desktop wrapper, packaging, app identity, native filesystem and process hooks
+- `packages/opencode` - agent runtime and server core inherited from OpenCode
+- `packages/ui` - shared UI primitives, icons, logo, and theme surfaces
 
----
+## Contribution Flow
 
-**커뮤니티에 참여하기** [Discord](https://discord.gg/opencode) | [X.com](https://x.com/opencode)
+This repo uses a protected-branch workflow:
+
+- `dev` is the default integration branch
+- `main` is protected
+- changes should land through pull requests
+
+If you are contributing to the fork:
+
+1. branch from `dev`
+2. open a PR back into `dev`
+3. merge into `main` only when the work is approved
+
+## Upstream Sync
+
+This project is a maintained fork, not a plugin layer. That means product features live in real app files, but the repo still tracks upstream OpenCode.
+
+A typical sync flow is:
+
+```bash
+git remote add upstream https://github.com/anomalyco/opencode.git
+git fetch upstream
+git merge upstream/dev
+```
+
+Because Paddie Studio changes core UI surfaces, some upstream syncs may need manual conflict resolution.
+
+## Current Product Areas
+
+Active product work in this fork includes:
+
+- Studio layout and responsive resizing
+- preview viewport controls
+- preview-to-chat element picking
+- template browsing and starter creation
+- desktop branding and icon system
+- visual frontend building workflow
+
+## License
+
+MIT.
+
+See upstream notices and commit history for provenance where this fork builds on OpenCode.

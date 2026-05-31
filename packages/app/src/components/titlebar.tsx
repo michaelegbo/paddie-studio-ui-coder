@@ -54,6 +54,7 @@ export function Titlebar() {
   const windows = createMemo(() => platform.platform === "desktop" && platform.os === "windows")
   const web = createMemo(() => platform.platform === "web")
   const zoom = () => platform.webviewZoom?.() ?? 1
+  const studioAvailable = createMemo(() => settings.general.paddieStudioFeatures() && !!platform.workbench)
   const titlebarZoom = () => (windows() ? Math.max(zoom(), minTitlebarZoom) : zoom())
   const counterZoom = () => (windows() && titlebarZoom() < 1 ? 1 / titlebarZoom() : 1)
   const minHeight = () => {
@@ -81,7 +82,7 @@ export function Titlebar() {
     return location.pathname.replace(/\/+$/, "").split("/").includes("session")
   })
   const workbench = createMemo(() => {
-    if (!settings.general.paddieStudioFeatures()) return false
+    if (!studioAvailable()) return false
     if (!params.dir) return false
     const parts = location.pathname.replace(/\/+$/, "").split("/")
     return parts.at(-1) === "workbench"
@@ -89,13 +90,13 @@ export function Titlebar() {
   const studioKey = createMemo(() => (params.dir ? `${params.dir}${params.id ? "/" + params.id : ""}` : ""))
   const studioView = layout.view(studioKey)
   const studio = createMemo(() => {
-    if (!settings.general.paddieStudioFeatures()) return false
+    if (!studioAvailable()) return false
     if (!params.dir) return false
     return studioView.studio.opened()
   })
 
   const openStudio = () => {
-    if (!settings.general.paddieStudioFeatures()) return
+    if (!studioAvailable()) return
     if (!params.dir) return
 
     const target = params.id ? `/${params.dir}/session/${params.id}` : `/${params.dir}/session`
@@ -371,7 +372,7 @@ export function Titlebar() {
           data-tauri-drag-region
           onMouseDown={drag}
         >
-          <Show when={params.dir && settings.general.paddieStudioFeatures()}>
+          <Show when={params.dir && studioAvailable()}>
             <Tooltip placement="bottom" value="Studio" openDelay={2000}>
               <Button
                 variant="ghost"
