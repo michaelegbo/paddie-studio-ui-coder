@@ -10,7 +10,6 @@ import {
   fileToBase64,
   knowledgeBaseID,
   paddieMemoryLabel,
-  paddieMemoryText,
   sourceChunkText,
   type PaddieApiKey,
   type PaddieApiKeySecret,
@@ -100,6 +99,24 @@ export function PaddieDataPanel(props: {
   const memoryErrorText = createMemo(() => memoryError() ? paddieApiErrorMessage(memoryError()) : "")
   const kbErrorText = createMemo(() => kbError() ? paddieApiErrorMessage(kbError()) : "")
   const apiErrorText = createMemo(() => apiError() ? paddieApiErrorMessage(apiError()) : "")
+  const memoryRouterSnippet = createMemo(() =>
+    [
+      "const userId = await getOrCreatePaddieMemoryUserId(currentUser)",
+      "",
+      `fetch("${apiBase()}/memory/router", {`,
+      "  method: \"POST\",",
+      "  headers: {",
+      "    \"content-type\": \"application/json\",",
+      "    \"x-api-key\": process.env.PADDIE_API_KEY",
+      "  },",
+      "  body: JSON.stringify({",
+      "    query: \"Remember that this user prefers concise UI\",",
+      "    user_id: userId,",
+      "    mode: \"conversation\"",
+      "  })",
+      "})",
+    ].join("\n"),
+  )
 
   const focusPrompt = () => {
     if (props.chatHidden) props.onChatToggle?.()
@@ -183,47 +200,42 @@ export function PaddieDataPanel(props: {
     }
   }
 
-  const attachMemory = (memory: PaddieMemoryRecord) => {
-    const text = paddieMemoryText(memory)
-    prompt.context.add({
-      type: "memory",
-      userID: memory.user_id || memoryUserID().trim(),
-      mode: "memory",
-      label: paddieMemoryLabel(memory),
-      content: trimText(text || "Memory record attached without text."),
-      memoryType: memory.type,
-      metadata: memory.metadata,
-      memories: [memory],
-    })
-    focusPrompt()
-    showToast({ title: "Memory added to chat", description: paddieMemoryLabel(memory) })
-  }
+  const attachMemoryService = (sampleQuery?: string) => {
+    const explorerUserID = memoryUserID().trim()
+    const query = sampleQuery?.trim() || routerQuery().trim() || "Integrate Paddie Memory"
+    const userIDStrategy =
+      "Create or resolve a stable app-specific Paddie Memory user_id for each end user at runtime, persist the mapping in the app's auth profile, database, or local profile store, and pass that dynamic user_id on every Memory Router call."
+    const content = [
+      `API base: ${apiBase()}`,
+      "Endpoint: POST /memory/router",
+      "API key: read PADDIE_API_KEY from trusted server-side environment or secret storage.",
+      `User ID strategy: ${userIDStrategy}`,
+      "Integration behavior: call Memory Router with mode=conversation for normal user interactions so RMN can retrieve relevant memory and store new memory when appropriate.",
+      "Do not hardcode the Studio explorer user ID or embed individual memory records into the app. The explorer is only for inspection and testing.",
+      "For client-only projects, create a backend route first; do not ship PADDIE_API_KEY in browser code.",
+    ]
+    if (explorerUserID) content.push(`Selected explorer user ID for testing only: ${explorerUserID}`)
+    if (query) content.push(`Sample integration query: ${query}`)
 
-  const attachRouterResult = () => {
-    const result = routerResult()
-    if (!result) return
-    const context = (result.context ?? []).map((item): PaddieMemoryRecord => ({
-      memory: item.memory,
-      type: item.type,
-      metadata: { relevance: item.relevance, source: item.source },
-      user_id: memoryUserID().trim(),
-    }))
-    const records = [...(result.memories ?? []), ...context]
     prompt.context.add({
       type: "memory",
-      userID: memoryUserID().trim(),
-      mode: "router",
-      label: "Memory Router result",
-      query: routerQuery().trim(),
-      content: trimText([
-        result.explanation,
-        ...records.map((item, index) => `${index + 1}. ${paddieMemoryText(item) || item.memory || item.content || "Memory"}`),
-      ].filter(Boolean).join("\n")),
-      metadata: result.metadata,
-      memories: records,
+      userID: explorerUserID || "<DYNAMIC_USER_ID>",
+      mode: "integration",
+      label: "Paddie Memory service",
+      endpoint: "POST /memory/router",
+      apiBase: apiBase(),
+      apiKeyEnv: "PADDIE_API_KEY",
+      userIDStrategy,
+      query,
+      content: trimText(content.join("\n")),
+      metadata: {
+        selectedExplorerUserID: explorerUserID || undefined,
+        routerMode: routerMode(),
+        service: "paddie-memory-router",
+      },
     })
     focusPrompt()
-    showToast({ title: "Memory Router result added", description: routerQuery().trim() })
+    showToast({ title: "Memory service added", description: "The agent will integrate dynamic Paddie Memory, not static records." })
   }
 
   const loadKnowledgeBases = async () => {
@@ -357,24 +369,7 @@ export function PaddieDataPanel(props: {
   }
 
   const attachMemoryApiNote = () => {
-    const userID = memoryUserID().trim() || "<USER_ID>"
-    const snippet = [
-      `POST ${apiBase()}/memory/router`,
-      `Authorization: Bearer <PADDIE_API_KEY>`,
-      "",
-      JSON.stringify({ query: "What should this app remember?", user_id: userID, mode: "conversation" }, null, 2),
-    ].join("\n")
-    prompt.context.add({
-      type: "memory",
-      userID,
-      mode: "api",
-      label: "Paddie Memory API",
-      endpoint: "POST /memory/router",
-      query: "Integrate Paddie Memory",
-      content: snippet,
-    })
-    focusPrompt()
-    showToast({ title: "Memory API note added", description: "The agent will use the Paddie data integration skill." })
+    attachMemoryService("What should this app remember?")
   }
 
   const attachKnowledgeBaseApiNote = () => {
@@ -505,7 +500,17 @@ export function PaddieDataPanel(props: {
 
         <Show when={section() === "memory"}>
           <div class="grid gap-3 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
-            <Panel title="Memory explorer" action={<Button variant="ghost" class="h-8 px-3 text-11-medium" disabled={memoryLoading()} onClick={() => void loadMemories()}>Refresh</Button>}>
+            <Panel
+              title="Memory explorer"
+              action={
+                <div class="flex items-center gap-2">
+                  <Button variant="ghost" class="h-8 px-3 text-11-medium" disabled={memoryLoading()} onClick={() => void loadMemories()}>Refresh</Button>
+                  <Button class="h-8 px-3 text-11-medium" onClick={() => attachMemoryService()}>
+                    Attach service
+                  </Button>
+                </div>
+              }
+            >
               <div class="grid gap-2 lg:grid-cols-[minmax(180px,1fr)_minmax(160px,0.8fr)_150px]">
                 <input class={inputClass} value={memoryUserID()} onInput={(event) => setMemoryUserID(event.currentTarget.value)} placeholder="user_id" />
                 <input class={inputClass} value={memorySearch()} onInput={(event) => setMemorySearch(event.currentTarget.value)} placeholder="Search memories" />
@@ -546,9 +551,9 @@ export function PaddieDataPanel(props: {
                                 <Show when={memory.created_at}><span>{isoDate(memory.created_at)}</span></Show>
                               </div>
                             </div>
-                            <Button variant="ghost" class="h-8 px-3 text-11-medium" onClick={() => attachMemory(memory)}>
-                              Attach
-                            </Button>
+                            <div class="rounded-lg border border-border-weaker-base px-2 py-1 text-11-medium text-text-weak">
+                              Explorer only
+                            </div>
                           </div>
                         </div>
                       )}
@@ -579,8 +584,8 @@ export function PaddieDataPanel(props: {
                   <Button class="h-9 px-3 text-12-medium" disabled={!routerQuery().trim() || !memoryUserID().trim() || memoryLoading()} onClick={() => void runMemoryRouter()}>
                     Run router
                   </Button>
-                  <Button variant="ghost" class="h-9 px-3 text-12-medium" disabled={!routerResult()} onClick={attachRouterResult}>
-                    Attach result
+                  <Button variant="ghost" class="h-9 px-3 text-12-medium" onClick={() => attachMemoryService(routerQuery())}>
+                    Attach service
                   </Button>
                 </div>
                 <Show when={routerResult()}>
@@ -729,7 +734,7 @@ export function PaddieDataPanel(props: {
             </Panel>
             <Panel title="Integration snippets">
               <div class="space-y-3">
-                <Snippet title="Memory Router" text={`fetch("${apiBase()}/memory/router", {\n  method: "POST",\n  headers: {\n    "content-type": "application/json",\n    "x-api-key": process.env.PADDIE_API_KEY\n  },\n  body: JSON.stringify({\n    query: "Remember that this user prefers concise UI",\n    user_id: "${memoryUserID() || "<USER_ID>"}",\n    mode: "conversation"\n  })\n})`} copy={copy} attach={attachMemoryApiNote} />
+                <Snippet title="Memory Router" text={memoryRouterSnippet()} copy={copy} attach={attachMemoryApiNote} />
                 <Snippet title="Knowledge Base Query" text={`fetch("${apiBase()}/knowledge-bases/${selectedKnowledgeBaseID() || "<KB_ID>"}/query", {\n  method: "POST",\n  headers: {\n    "content-type": "application/json",\n    "x-api-key": process.env.PADDIE_API_KEY\n  },\n  body: JSON.stringify({\n    query: "What does this document say?",\n    limit: 8,\n    generateAnswer: true,\n    includeGraph: true\n  })\n})`} copy={copy} attach={kbApiDetail() ? attachKnowledgeBaseApiNote : undefined} />
               </div>
             </Panel>

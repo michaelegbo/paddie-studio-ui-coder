@@ -9,12 +9,16 @@ Use this skill when implementing Paddie Memory, Memory Router, Knowledge Base, A
 - Treat RMN/Paddie APIs as the source of truth for auth, usage, plan gates, memories, knowledge bases, and API keys.
 - Never hardcode API keys, JWTs, tenant IDs, or secrets into client bundles. Use server routes, environment variables, or platform secret storage.
 - Keep user memory explicitly scoped by `user_id`; do not fetch unrelated tenant memory unless the user asks and authorization is already in place.
+- Treat Memory attachments from Studio as a service-integration request, not as a request to paste individual memory records into code.
+- Create or resolve a stable Paddie Memory `user_id` dynamically for each end user at runtime, persist that mapping in the app's auth profile, database, or local profile store, and pass it on every Memory Router call.
 - Preserve RMN plan gates. Show upgrade/limit errors from the API instead of bypassing or duplicating access checks.
 - Prefer small adapters, hooks, services, or route handlers that can be reused by the app.
 
 ## Memory Router
 
 Use `POST /api/memory/router` for agentic memory behavior.
+
+Do not hardcode the Studio explorer `user_id` into the app. The explorer user ID is useful for testing only. Product code should derive a stable per-user memory ID from the app's authenticated user, account record, or generated local profile and then persist it.
 
 Typical request:
 
@@ -33,6 +37,35 @@ Use modes this way:
 - `retrieve`: search memory without storing.
 - `store`: store a direct memory.
 - `auto`: let RMN classify the intent.
+
+Typical integration shape:
+
+```ts
+async function getPaddieMemoryUserID(appUser: { id?: string; email?: string }) {
+  // Prefer a saved mapping in your app database/profile. For local-only apps,
+  // generate once and persist in the user's local profile.
+  return appUser.id ? `app_${appUser.id}` : "local_profile_user"
+}
+
+export async function runPaddieMemory(input: { appUser: { id?: string; email?: string }; query: string }) {
+  const response = await fetch(`${process.env.PADDIE_API_BASE ?? "https://api.paddie.io/api"}/memory/router`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": process.env.PADDIE_API_KEY!,
+    },
+    body: JSON.stringify({
+      query: input.query,
+      user_id: await getPaddieMemoryUserID(input.appUser),
+      mode: "conversation",
+      include_analysis: false,
+    }),
+  })
+
+  if (!response.ok) throw new Error(await response.text())
+  return response.json()
+}
+```
 
 ## Manual Memory
 

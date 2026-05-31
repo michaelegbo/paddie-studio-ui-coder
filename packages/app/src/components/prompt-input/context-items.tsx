@@ -51,7 +51,8 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
               ) : item.type === "memory" ? (
                 <div class="flex max-w-[320px] flex-col gap-1">
                   <span class="truncate text-text-invert-base">{item.label}</span>
-                  <span class="break-all text-text-invert-base/80">{item.userID}</span>
+                  <span class="break-all text-text-invert-base/80">{item.mode === "integration" ? item.endpoint || "Paddie Memory service" : item.userID}</span>
+                  <Show when={item.userIDStrategy}>{(value) => <span class="text-text-invert-base/70">{value()}</span>}</Show>
                   <Show when={item.query}>{(value) => <span class="break-all text-text-invert-base/70">{value()}</span>}</Show>
                 </div>
               ) : item.type === "knowledge-base" ? (

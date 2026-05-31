@@ -526,17 +526,18 @@ describe("prompt submit worktree selection", () => {
     promptAsyncError = new Error("network down")
     contextItems.push(
       {
-        key: "memory:user_1:router:preferences",
+        key: "memory:dynamic-user:integration:Paddie Memory service",
         type: "memory",
-        userID: "user_1",
-        mode: "router",
-        label: "Preferences",
+        userID: "<DYNAMIC_USER_ID>",
+        mode: "integration",
+        label: "Paddie Memory service",
         query: "What should the app remember?",
-        content: "User prefers compact dashboards.",
-        memoryType: "preference",
-        endpoint: "/api/memory/router",
-        metadata: { confidence: 0.9 },
-        memories: [{ id: "mem_1", memory: "User prefers compact dashboards.", type: "preference" }],
+        content: "Integrate Memory Router through a server route and pass dynamic user IDs.",
+        endpoint: "POST /memory/router",
+        apiBase: "https://api.paddie.io/api",
+        apiKeyEnv: "PADDIE_API_KEY",
+        userIDStrategy: "Create or resolve a stable app-specific Paddie Memory user_id for each end user.",
+        metadata: { selectedExplorerUserID: "user_1" },
       },
       {
         key: "knowledge-base:kb_1:query:onboarding",
@@ -573,13 +574,15 @@ describe("prompt submit worktree selection", () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     }
 
-    expect(contextRemoves).toContain("memory:user_1:router:preferences")
+    expect(contextRemoves).toContain("memory:dynamic-user:integration:Paddie Memory service")
     expect(contextRemoves).toContain("knowledge-base:kb_1:query:onboarding")
     expect(contextAdds).toHaveLength(2)
     expect(contextAdds[0]).toMatchObject({
       type: "memory",
-      userID: "user_1",
+      userID: "<DYNAMIC_USER_ID>",
       query: "What should the app remember?",
+      apiKeyEnv: "PADDIE_API_KEY",
+      userIDStrategy: "Create or resolve a stable app-specific Paddie Memory user_id for each end user.",
     })
     expect(contextAdds[1]).toMatchObject({
       type: "knowledge-base",

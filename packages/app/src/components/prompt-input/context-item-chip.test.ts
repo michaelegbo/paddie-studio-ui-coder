@@ -73,20 +73,21 @@ describe("contextItemChip", () => {
     })
   })
 
-  test("labels Paddie Memory references by selected memory or query", () => {
+  test("labels Paddie Memory integration references by service strategy", () => {
     expect(
       contextItemChip({
-        key: "memory:user_1:router:preferences",
+        key: "memory:dynamic-user:integration:Paddie Memory service",
         type: "memory",
-        userID: "user_1",
-        mode: "router",
-        label: "User prefers compact dashboards",
-        query: "dashboard preference",
-        content: "User prefers compact dashboards.",
+        userID: "<DYNAMIC_USER_ID>",
+        mode: "integration",
+        label: "Paddie Memory service",
+        content: "Integrate Memory Router.",
+        endpoint: "POST /memory/router",
+        userIDStrategy: "Create a stable app-specific Paddie Memory user_id per end user.",
       }),
     ).toMatchObject({
-      label: "User prefers compact dashboards",
-      body: "dashboard preference",
+      label: "Paddie Memory service",
+      body: "Create a stable app-specific Paddie Memory user_id per end user.",
       icon: "brain",
     })
   })

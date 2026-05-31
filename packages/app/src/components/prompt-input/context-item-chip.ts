@@ -29,7 +29,7 @@ export function contextItemChip(item: ContextItem & { key: string }) {
   if (item.type === "memory") {
     return {
       label: item.label,
-      body: item.query || item.userID,
+      body: item.mode === "integration" ? item.userIDStrategy || item.endpoint || item.userID : item.query || item.userID,
       icon: "brain" as const,
     }
   }

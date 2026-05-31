@@ -148,7 +148,7 @@ export const dataGoalNeedsPaddieSkill = (goal: string) =>
   )
 
 export const paddieDataSkillInstruction = () =>
-  `Before implementing Paddie Memory, Memory Router, Knowledge Base, RAG, or API-key integration, load and follow the ${PADDIE_DATA_SKILL_NAME} skill. Use RMN/Paddie APIs as the source of truth, keep secrets server-side or in environment variables, respect plan gates, and do not pull unrelated tenant memory.`
+  `Before implementing Paddie Memory, Memory Router, Knowledge Base, RAG, or API-key integration, load and follow the ${PADDIE_DATA_SKILL_NAME} skill. Use RMN/Paddie APIs as the source of truth, keep secrets server-side or in environment variables, create or resolve Paddie Memory user IDs dynamically per app user, respect plan gates, and do not pull unrelated tenant memory.`
 
 export async function fileToBase64(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer())
