@@ -43,6 +43,18 @@ jobs:
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
           fetch-depth: 0
 
+      - name: Validate dev release source
+        shell: pwsh
+        run: |
+          git fetch origin dev
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.ref }}" -ne "dev") {
+            throw "Manual Microsoft Store publishing must use the dev branch."
+          }
+          git merge-base --is-ancestor HEAD origin/dev
+          if ($LASTEXITCODE -ne 0) {
+            throw "Microsoft Store publishing must use a commit reachable from origin/dev."
+          }
+
       - uses: ./.github/actions/setup-bun
 
       - uses: dtolnay/rust-toolchain@stable
