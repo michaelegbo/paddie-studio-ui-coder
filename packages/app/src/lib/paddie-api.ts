@@ -83,6 +83,8 @@ export function paddieApiErrorFromResponse(status: number, body: unknown) {
           ? data.current_plan
           : typeof data.current_tier === "string"
             ? data.current_tier
+            : typeof data.plan === "string"
+              ? data.plan
             : undefined,
       limit: typeof data.limit === "number" ? data.limit : undefined,
       current: typeof data.current === "number" ? data.current : undefined,

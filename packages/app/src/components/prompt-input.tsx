@@ -1065,6 +1065,37 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             continue
           }
 
+          if (item.type === "memory") {
+            prompt.context.add({
+              type: "memory",
+              userID: item.userID,
+              mode: item.mode,
+              label: item.label,
+              query: item.query,
+              content: item.content,
+              memoryType: item.memoryType,
+              endpoint: item.endpoint,
+              metadata: item.metadata,
+              memories: item.memories,
+            })
+            continue
+          }
+
+          if (item.type === "knowledge-base") {
+            prompt.context.add({
+              type: "knowledge-base",
+              knowledgeBaseID: item.knowledgeBaseID,
+              knowledgeBaseName: item.knowledgeBaseName,
+              mode: item.mode,
+              label: item.label,
+              query: item.query,
+              answer: item.answer,
+              apiNote: item.apiNote,
+              sources: item.sources,
+            })
+            continue
+          }
+
           if (item.type === "autopilot") {
             prompt.context.add({
               type: "autopilot",

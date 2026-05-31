@@ -10,10 +10,13 @@ import type {
   FileContextItem,
   ImageAttachmentPart,
   InspirationContextItem,
+  KnowledgeBaseContextItem,
+  MemoryContextItem,
   Prompt,
   TemplateContextItem,
   WorkflowContextItem,
 } from "@/context/prompt"
+import { paddieDataSkillInstruction } from "@/paddie-data/helpers"
 import { Identifier } from "@/utils/id"
 import { createCommentMetadata, formatCommentNote } from "@/utils/comment-note"
 
@@ -28,6 +31,8 @@ type BuildRequestPartsInput = {
     | ElementContextItem
     | TemplateContextItem
     | WorkflowContextItem
+    | MemoryContextItem
+    | KnowledgeBaseContextItem
     | InspirationContextItem
     | AutopilotContextItem
   ))[]
@@ -68,6 +73,12 @@ const isTemplateContext = (
 const isWorkflowContext = (
   item: BuildRequestPartsInput["context"][number],
 ): item is { key: string } & WorkflowContextItem => item.type === "workflow"
+const isMemoryContext = (
+  item: BuildRequestPartsInput["context"][number],
+): item is { key: string } & MemoryContextItem => item.type === "memory"
+const isKnowledgeBaseContext = (
+  item: BuildRequestPartsInput["context"][number],
+): item is { key: string } & KnowledgeBaseContextItem => item.type === "knowledge-base"
 const isInspirationContext = (
   item: BuildRequestPartsInput["context"][number],
 ): item is { key: string } & InspirationContextItem => item.type === "inspiration"
@@ -201,6 +212,71 @@ const formatWorkflowNote = (item: WorkflowContextItem) => {
   )
   lines.push(`Generated ${item.language} client code:\n${item.code}`)
   lines.push(`Workflow graph JSON:\n${JSON.stringify({ nodes, edges }, null, 2)}`)
+  return lines.join("\n\n")
+}
+
+const formatJsonSummary = (value: unknown) => {
+  if (!value) return ""
+  try {
+    return JSON.stringify(value, null, 2).slice(0, 6_000)
+  } catch {
+    return String(value).slice(0, 6_000)
+  }
+}
+
+const formatMemoryNote = (item: MemoryContextItem) => {
+  const lines = [
+    "The user attached Paddie Memory context for this implementation.",
+    paddieDataSkillInstruction(),
+    `User ID: ${item.userID}`,
+    `Reference mode: ${item.mode}`,
+    `Label: ${item.label}`,
+  ]
+  if (item.endpoint) lines.push(`Endpoint: ${item.endpoint}`)
+  if (item.query?.trim()) lines.push(`Query: ${item.query.trim()}`)
+  if (item.memoryType) lines.push(`Memory type: ${item.memoryType}`)
+  if (item.content.trim()) lines.push(`Memory context:\n${item.content.trim()}`)
+  if (item.memories?.length) {
+    lines.push("Included memories:")
+    lines.push(
+      ...item.memories.slice(0, 20).map((memory, index) => {
+        const text = String(memory.memory || memory.content || "").trim()
+        return `${index + 1}. ${text || memory.id || "Memory"}${memory.type ? ` [${memory.type}]` : ""}`
+      }),
+    )
+  }
+  const metadata = formatJsonSummary(item.metadata)
+  if (metadata) lines.push(`Metadata summary:\n${metadata}`)
+  lines.push(
+    "Use this as explicit user-provided Paddie Memory context only. Do not fetch or infer unrelated tenant memory unless the user asks and the app has proper server-side authorization.",
+  )
+  return lines.join("\n\n")
+}
+
+const formatKnowledgeBaseNote = (item: KnowledgeBaseContextItem) => {
+  const lines = [
+    "The user attached Paddie Knowledge Base / AI RAG context for this implementation.",
+    paddieDataSkillInstruction(),
+    `Knowledge base: ${item.knowledgeBaseName} (${item.knowledgeBaseID})`,
+    `Reference mode: ${item.mode}`,
+    `Label: ${item.label}`,
+  ]
+  if (item.query?.trim()) lines.push(`Query: ${item.query.trim()}`)
+  if (item.answer?.trim()) lines.push(`Answer:\n${item.answer.trim()}`)
+  if (item.sources?.length) {
+    lines.push("Source chunks:")
+    lines.push(
+      ...item.sources.slice(0, 12).map((source, index) => {
+        const name = source.document_name || source.document_id || `chunk ${index + 1}`
+        const score = typeof source.score === "number" ? ` score=${source.score.toFixed(3)}` : ""
+        return `--- ${name}${score} ---\n${String(source.text || "").trim()}`
+      }),
+    )
+  }
+  if (item.apiNote?.trim()) lines.push(`API integration note:\n${item.apiNote.trim()}`)
+  lines.push(
+    "Use this as explicit user-provided RAG context. Keep API keys out of client bundles, call Paddie/RMN from trusted server code where possible, and preserve RMN plan gates.",
+  )
   return lines.join("\n\n")
 }
 
@@ -396,6 +472,28 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
           id: Identifier.ascending("part"),
           type: "text",
           text: formatWorkflowNote(item),
+          synthetic: true,
+        } satisfies PromptRequestPart,
+      ]
+    }
+
+    if (isMemoryContext(item)) {
+      return [
+        {
+          id: Identifier.ascending("part"),
+          type: "text",
+          text: formatMemoryNote(item),
+          synthetic: true,
+        } satisfies PromptRequestPart,
+      ]
+    }
+
+    if (isKnowledgeBaseContext(item)) {
+      return [
+        {
+          id: Identifier.ascending("part"),
+          type: "text",
+          text: formatKnowledgeBaseNote(item),
           synthetic: true,
         } satisfies PromptRequestPart,
       ]

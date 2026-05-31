@@ -6,6 +6,7 @@ import { createStore, type SetStoreFunction } from "solid-js/store"
 import type { AutopilotContextPayload } from "@/autopilot/helpers"
 import type { FileSelection } from "@/context/file"
 import type { InspirationContextPayload } from "@/inspiration/helpers"
+import type { PaddieKnowledgeBaseQueryResult, PaddieMemoryRecord } from "@/paddie-data/helpers"
 import type { TemplateFile } from "@/template/helpers"
 import { Persist, persisted } from "@/utils/persist"
 
@@ -104,6 +105,31 @@ export type WorkflowContextItem = {
   updatedAt?: string
 }
 
+export type MemoryContextItem = {
+  type: "memory"
+  userID: string
+  mode: "memory" | "router" | "api"
+  label: string
+  query?: string
+  content: string
+  memoryType?: string
+  endpoint?: string
+  metadata?: Record<string, unknown>
+  memories?: PaddieMemoryRecord[]
+}
+
+export type KnowledgeBaseContextItem = {
+  type: "knowledge-base"
+  knowledgeBaseID: string
+  knowledgeBaseName: string
+  mode: "query" | "api" | "document"
+  label: string
+  query?: string
+  answer?: string
+  apiNote?: string
+  sources?: NonNullable<PaddieKnowledgeBaseQueryResult["results"]>
+}
+
 export type InspirationContextItem = InspirationContextPayload & {
   type: "inspiration"
 }
@@ -117,6 +143,8 @@ export type ContextItem =
   | ElementContextItem
   | TemplateContextItem
   | WorkflowContextItem
+  | MemoryContextItem
+  | KnowledgeBaseContextItem
   | InspirationContextItem
   | AutopilotContextItem
 
@@ -174,6 +202,8 @@ function contextItemKey(item: ContextItem) {
   if (item.type === "element") return `${item.type}:${item.url}:${item.selector}`
   if (item.type === "inspiration") return `${item.type}:${item.url}:${item.mode}:${item.selector ?? "page"}`
   if (item.type === "autopilot") return `${item.type}:${item.runID}`
+  if (item.type === "memory") return `${item.type}:${item.userID}:${item.mode}:${item.query ?? item.label}`
+  if (item.type === "knowledge-base") return `${item.type}:${item.knowledgeBaseID}:${item.mode}:${item.query ?? item.label}`
   if (item.type === "template") return `${item.type}:${item.templateID}:${item.partID ?? "full"}:${item.selector ?? "part"}`
   if (item.type === "workflow") return `${item.type}:${item.workflowID}:${item.language}`
   const start = item.selection?.startLine

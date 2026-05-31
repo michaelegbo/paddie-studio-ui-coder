@@ -201,7 +201,7 @@ type CommentItem = {
   preview?: string
 }
 
-type TransientItem = Extract<ContextItem, { type: "element" | "template" | "workflow" | "inspiration" | "autopilot" }> & {
+type TransientItem = Extract<ContextItem, { type: "element" | "template" | "workflow" | "memory" | "knowledge-base" | "inspiration" | "autopilot" }> & {
   key: string
 }
 
@@ -209,6 +209,8 @@ const isTransientItem = (item: ContextItem | (ContextItem & { key: string })): i
   item.type === "element" ||
   item.type === "template" ||
   item.type === "workflow" ||
+  item.type === "memory" ||
+  item.type === "knowledge-base" ||
   item.type === "inspiration" ||
   item.type === "autopilot"
 
@@ -315,6 +317,37 @@ export function createPromptSubmit(input: PromptSubmitInput) {
           text: item.text,
           html: item.html,
           styleSignals: item.styleSignals,
+        })
+        continue
+      }
+
+      if (item.type === "memory") {
+        prompt.context.add({
+          type: "memory",
+          userID: item.userID,
+          mode: item.mode,
+          label: item.label,
+          query: item.query,
+          content: item.content,
+          memoryType: item.memoryType,
+          endpoint: item.endpoint,
+          metadata: item.metadata,
+          memories: item.memories,
+        })
+        continue
+      }
+
+      if (item.type === "knowledge-base") {
+        prompt.context.add({
+          type: "knowledge-base",
+          knowledgeBaseID: item.knowledgeBaseID,
+          knowledgeBaseName: item.knowledgeBaseName,
+          mode: item.mode,
+          label: item.label,
+          query: item.query,
+          answer: item.answer,
+          apiNote: item.apiNote,
+          sources: item.sources,
         })
         continue
       }
