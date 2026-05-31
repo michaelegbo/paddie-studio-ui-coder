@@ -1075,8 +1075,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               content: item.content,
               memoryType: item.memoryType,
               endpoint: item.endpoint,
+              apiBase: item.apiBase,
+              apiKeyEnv: item.apiKeyEnv,
+              userIDStrategy: item.userIDStrategy,
               metadata: item.metadata,
-              memories: item.memories,
             })
             continue
           }

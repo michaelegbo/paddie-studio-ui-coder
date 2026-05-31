@@ -40,6 +40,7 @@ describe("paddie data helpers", () => {
 
     expect(instruction).toContain("paddie-data-integrator")
     expect(instruction).toContain("RMN/Paddie APIs")
+    expect(instruction).toContain("user IDs dynamically")
     expect(instruction).toContain("do not pull unrelated tenant memory")
   })
 })

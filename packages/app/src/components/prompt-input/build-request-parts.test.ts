@@ -163,23 +163,18 @@ describe("buildRequestParts", () => {
       prompt: [{ type: "text", content: "wire memory into this app", start: 0, end: 25 }],
       context: [
         {
-          key: "memory:user_1:router:preferences",
+          key: "memory:dynamic-user:integration:Paddie Memory service",
           type: "memory",
-          userID: "user_1",
-          mode: "router",
-          label: "Preferences",
-          query: "What should the app remember?",
-          content: "User prefers compact dashboards and concise labels.",
-          memoryType: "preference",
-          endpoint: "/api/memory/router",
-          metadata: { confidence: 0.9 },
-          memories: [
-            {
-              id: "mem_1",
-              memory: "User prefers compact dashboards.",
-              type: "preference",
-            },
-          ],
+          userID: "<DYNAMIC_USER_ID>",
+          mode: "integration",
+          label: "Paddie Memory service",
+          query: "What should this app remember?",
+          content: "Integrate Memory Router through a server route and pass a dynamic user_id for each app user.",
+          endpoint: "POST /memory/router",
+          apiBase: "https://api.paddie.io/api",
+          apiKeyEnv: "PADDIE_API_KEY",
+          userIDStrategy: "Create or resolve a stable app-specific Paddie Memory user_id for each end user.",
+          metadata: { selectedExplorerUserID: "user_1" },
         },
       ],
       images: [],
@@ -192,12 +187,14 @@ describe("buildRequestParts", () => {
     const synthetic = result.requestParts.find((part) => part.type === "text" && part.synthetic)
     expect(synthetic?.type).toBe("text")
     if (synthetic?.type === "text") {
-      expect(synthetic.text).toContain("Paddie Memory context")
+      expect(synthetic.text).toContain("Paddie Memory as a service integration")
       expect(synthetic.text).toContain("paddie-data-integrator")
-      expect(synthetic.text).toContain("User ID: user_1")
-      expect(synthetic.text).toContain("What should the app remember?")
-      expect(synthetic.text).toContain("User prefers compact dashboards")
-      expect(synthetic.text).toContain("Do not fetch or infer unrelated tenant memory")
+      expect(synthetic.text).toContain("This is not a static dump of individual memory records")
+      expect(synthetic.text).toContain("API key environment variable: PADDIE_API_KEY")
+      expect(synthetic.text).toContain("Dynamic user ID strategy")
+      expect(synthetic.text).toContain("What should this app remember?")
+      expect(synthetic.text).toContain("Do not hardcode the Studio explorer user ID")
+      expect(synthetic.text).not.toContain("Included memories:")
     }
   })
 

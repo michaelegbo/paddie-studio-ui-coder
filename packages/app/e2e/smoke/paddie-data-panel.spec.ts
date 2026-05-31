@@ -15,6 +15,8 @@ test.describe("smoke: Paddie Data panel", () => {
 
     await expect(page.getByText("Paddie Data")).toBeVisible()
     await expect(page.getByText("User prefers compact dashboards.")).toBeVisible()
+    await expect(page.getByText("Explorer only")).toBeVisible()
+    await expect(page.getByRole("button", { name: "Attach service" }).first()).toBeVisible()
 
     await page.getByRole("button", { name: "Knowledge Base" }).click()
     await expect(page.getByRole("button", { name: /Onboarding/ })).toBeVisible()

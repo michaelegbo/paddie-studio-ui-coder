@@ -6,7 +6,7 @@ import { createStore, type SetStoreFunction } from "solid-js/store"
 import type { AutopilotContextPayload } from "@/autopilot/helpers"
 import type { FileSelection } from "@/context/file"
 import type { InspirationContextPayload } from "@/inspiration/helpers"
-import type { PaddieKnowledgeBaseQueryResult, PaddieMemoryRecord } from "@/paddie-data/helpers"
+import type { PaddieKnowledgeBaseQueryResult } from "@/paddie-data/helpers"
 import type { TemplateFile } from "@/template/helpers"
 import { Persist, persisted } from "@/utils/persist"
 
@@ -108,14 +108,16 @@ export type WorkflowContextItem = {
 export type MemoryContextItem = {
   type: "memory"
   userID: string
-  mode: "memory" | "router" | "api"
+  mode: "integration" | "router" | "api"
   label: string
   query?: string
   content: string
   memoryType?: string
   endpoint?: string
+  apiBase?: string
+  apiKeyEnv?: string
+  userIDStrategy?: string
   metadata?: Record<string, unknown>
-  memories?: PaddieMemoryRecord[]
 }
 
 export type KnowledgeBaseContextItem = {

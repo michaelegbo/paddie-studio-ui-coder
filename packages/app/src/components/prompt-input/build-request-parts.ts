@@ -226,29 +226,27 @@ const formatJsonSummary = (value: unknown) => {
 
 const formatMemoryNote = (item: MemoryContextItem) => {
   const lines = [
-    "The user attached Paddie Memory context for this implementation.",
+    "The user attached Paddie Memory as a service integration for this implementation.",
     paddieDataSkillInstruction(),
-    `User ID: ${item.userID}`,
+    "This is not a static dump of individual memory records. Integrate the Memory Router service so the app can retrieve and store memories dynamically at runtime.",
     `Reference mode: ${item.mode}`,
     `Label: ${item.label}`,
   ]
+  if (item.apiBase) lines.push(`API base: ${item.apiBase}`)
   if (item.endpoint) lines.push(`Endpoint: ${item.endpoint}`)
+  if (item.apiKeyEnv) lines.push(`API key environment variable: ${item.apiKeyEnv}`)
+  if (item.userIDStrategy) lines.push(`Dynamic user ID strategy: ${item.userIDStrategy}`)
+  if (item.userID) lines.push(`Selected explorer user ID, for testing only: ${item.userID}`)
   if (item.query?.trim()) lines.push(`Query: ${item.query.trim()}`)
   if (item.memoryType) lines.push(`Memory type: ${item.memoryType}`)
-  if (item.content.trim()) lines.push(`Memory context:\n${item.content.trim()}`)
-  if (item.memories?.length) {
-    lines.push("Included memories:")
-    lines.push(
-      ...item.memories.slice(0, 20).map((memory, index) => {
-        const text = String(memory.memory || memory.content || "").trim()
-        return `${index + 1}. ${text || memory.id || "Memory"}${memory.type ? ` [${memory.type}]` : ""}`
-      }),
-    )
-  }
+  if (item.content.trim()) lines.push(`Integration contract:\n${item.content.trim()}`)
   const metadata = formatJsonSummary(item.metadata)
   if (metadata) lines.push(`Metadata summary:\n${metadata}`)
   lines.push(
-    "Use this as explicit user-provided Paddie Memory context only. Do not fetch or infer unrelated tenant memory unless the user asks and the app has proper server-side authorization.",
+    "Create or reuse a stable app-user-to-Paddie-user mapping, pass that dynamic user_id with every memory call, and keep Paddie API keys in trusted server-side configuration. Do not hardcode the Studio explorer user ID in product code.",
+  )
+  lines.push(
+    "Use this explicit integration request only. Do not fetch or infer unrelated tenant memory unless the user asks and the app has proper server-side authorization.",
   )
   return lines.join("\n\n")
 }
