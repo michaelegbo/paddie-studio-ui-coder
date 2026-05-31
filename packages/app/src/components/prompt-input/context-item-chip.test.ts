@@ -72,4 +72,40 @@ describe("contextItemChip", () => {
       icon: "brain",
     })
   })
+
+  test("labels Paddie Memory references by selected memory or query", () => {
+    expect(
+      contextItemChip({
+        key: "memory:user_1:router:preferences",
+        type: "memory",
+        userID: "user_1",
+        mode: "router",
+        label: "User prefers compact dashboards",
+        query: "dashboard preference",
+        content: "User prefers compact dashboards.",
+      }),
+    ).toMatchObject({
+      label: "User prefers compact dashboards",
+      body: "dashboard preference",
+      icon: "brain",
+    })
+  })
+
+  test("labels Paddie Knowledge Base references by KB name", () => {
+    expect(
+      contextItemChip({
+        key: "knowledge-base:kb_1:query:onboarding",
+        type: "knowledge-base",
+        knowledgeBaseID: "kb_1",
+        knowledgeBaseName: "Onboarding",
+        mode: "query",
+        label: "Onboarding query",
+        query: "How should onboarding work?",
+      }),
+    ).toMatchObject({
+      label: "Onboarding",
+      body: "How should onboarding work?",
+      icon: "layout-right-full",
+    })
+  })
 })

@@ -9,6 +9,7 @@ import { createStore } from "solid-js/store"
 import {
   addAutopilotEvent,
   autopilotContextFromRun,
+  autopilotGoalNeedsData,
   autopilotGoalNeedsTemplate,
   autopilotGoalNeedsWorkflow,
   autopilotHandoffFromText,
@@ -1171,6 +1172,22 @@ export function AutopilotPanel(props: {
         },
         { understand: "done", gather: "active" },
       )
+
+      if (autopilotGoalNeedsData(current.goal)) {
+        current = addRunEventFor(
+          current,
+          {
+            id: `${current.runID}:data-skill`,
+            source: "system",
+            title: "Paddie Data skill enabled",
+            body: auth.isAuthenticated()
+              ? "The worker will load the Paddie data integration skill for Memory/RAG/API implementation."
+              : "Log in to Paddie Studio before asking Autopilot to inspect Memory, Knowledge Base, or API-key resources.",
+            at: new Date().toISOString(),
+          },
+        )
+        if (!auth.isAuthenticated()) throw new Error("Log in to Paddie Studio before asking Autopilot to use Memory, AI RAG, or API keys.")
+      }
 
       const [templateResources, workflowResources] = await Promise.all([
         loadTemplateCatalog(current),

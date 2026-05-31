@@ -158,6 +158,92 @@ describe("buildRequestParts", () => {
     }
   })
 
+  test("adds Paddie Memory context with the data integration skill instruction", () => {
+    const result = buildRequestParts({
+      prompt: [{ type: "text", content: "wire memory into this app", start: 0, end: 25 }],
+      context: [
+        {
+          key: "memory:user_1:router:preferences",
+          type: "memory",
+          userID: "user_1",
+          mode: "router",
+          label: "Preferences",
+          query: "What should the app remember?",
+          content: "User prefers compact dashboards and concise labels.",
+          memoryType: "preference",
+          endpoint: "/api/memory/router",
+          metadata: { confidence: 0.9 },
+          memories: [
+            {
+              id: "mem_1",
+              memory: "User prefers compact dashboards.",
+              type: "preference",
+            },
+          ],
+        },
+      ],
+      images: [],
+      text: "wire memory into this app",
+      messageID: "msg_memory",
+      sessionID: "ses_memory",
+      sessionDirectory: "/repo",
+    })
+
+    const synthetic = result.requestParts.find((part) => part.type === "text" && part.synthetic)
+    expect(synthetic?.type).toBe("text")
+    if (synthetic?.type === "text") {
+      expect(synthetic.text).toContain("Paddie Memory context")
+      expect(synthetic.text).toContain("paddie-data-integrator")
+      expect(synthetic.text).toContain("User ID: user_1")
+      expect(synthetic.text).toContain("What should the app remember?")
+      expect(synthetic.text).toContain("User prefers compact dashboards")
+      expect(synthetic.text).toContain("Do not fetch or infer unrelated tenant memory")
+    }
+  })
+
+  test("adds Paddie Knowledge Base context with RAG sources and API safety guidance", () => {
+    const result = buildRequestParts({
+      prompt: [{ type: "text", content: "add document search", start: 0, end: 19 }],
+      context: [
+        {
+          key: "knowledge-base:kb_1:query:onboarding",
+          type: "knowledge-base",
+          knowledgeBaseID: "kb_1",
+          knowledgeBaseName: "Onboarding",
+          mode: "query",
+          label: "Onboarding query",
+          query: "How should onboarding work?",
+          answer: "Show a short checklist and preserve provider setup.",
+          sources: [
+            {
+              document_id: "doc_1",
+              document_name: "Guide.md",
+              text: "Keep API keys on the server.",
+              score: 0.92,
+            },
+          ],
+        },
+      ],
+      images: [],
+      text: "add document search",
+      messageID: "msg_kb",
+      sessionID: "ses_kb",
+      sessionDirectory: "/repo",
+    })
+
+    const synthetic = result.requestParts.find((part) => part.type === "text" && part.synthetic)
+    expect(synthetic?.type).toBe("text")
+    if (synthetic?.type === "text") {
+      expect(synthetic.text).toContain("Knowledge Base / AI RAG")
+      expect(synthetic.text).toContain("paddie-data-integrator")
+      expect(synthetic.text).toContain("Knowledge base: Onboarding (kb_1)")
+      expect(synthetic.text).toContain("Show a short checklist")
+      expect(synthetic.text).toContain("--- Guide.md score=0.920 ---")
+      expect(synthetic.text).toContain("Keep API keys out of client bundles")
+      expect(synthetic.text).toContain("preserve RMN plan gates")
+    }
+  })
+
   test("adds public website inspiration context as a design reference note", () => {
     const result = buildRequestParts({
       prompt: [{ type: "text", content: "make this page feel like the reference", start: 0, end: 39 }],

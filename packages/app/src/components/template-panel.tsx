@@ -21,6 +21,7 @@ import {
 } from "@/lib/paddie-telemetry"
 import { AutopilotPanel } from "@/components/autopilot-panel"
 import { InspirationPanel } from "@/components/inspiration-panel"
+import { PaddieDataPanel } from "@/components/paddie-data-panel"
 import { WorkflowBuilder, type WorkflowAttachPayload } from "@/components/workflow-builder"
 import { DialogConnectProvider } from "@/components/dialog-connect-provider"
 import { DialogSelectProvider } from "@/components/dialog-select-provider"
@@ -101,7 +102,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 type Device = "desktop" | "tablet" | "mobile"
 type Desk = "1920" | "1600" | "1440"
-type StudioSection = "templates" | "inspiration" | "autopilot" | "workflow"
+type StudioSection = "templates" | "inspiration" | "autopilot" | "data" | "workflow"
 
 const views = {
   "1920": { w: 1920, h: 1080, label: "1920x1080" },
@@ -844,11 +845,11 @@ export function TemplatePanel(props: {
                         <div class="text-15-medium text-text-base">
                           {autopilotAvailable()
                             ? inspirationAvailable()
-                              ? "Templates, inspiration, autopilot & workflows"
-                              : "Templates, autopilot & workflows"
+                              ? "Templates, inspiration, autopilot, data & workflows"
+                              : "Templates, autopilot, data & workflows"
                             : inspirationAvailable()
-                              ? "Templates, inspiration & workflows"
-                              : "Templates & workflows"}
+                              ? "Templates, inspiration, data & workflows"
+                              : "Templates, data & workflows"}
                         </div>
                       </div>
                     </div>
@@ -857,6 +858,7 @@ export function TemplatePanel(props: {
                         {tab("templates", "Templates")}
                         <Show when={inspirationAvailable()}>{tab("inspiration", "Inspiration")}</Show>
                         <Show when={autopilotAvailable()}>{tab("autopilot", "Autopilot")}</Show>
+                        {tab("data", "Data")}
                         {tab("workflow", "Workflow Builder")}
                       </div>
                       <Show when={auth.isAuthenticated()}>
@@ -898,6 +900,8 @@ export function TemplatePanel(props: {
                   <div class="mt-3 max-w-[780px] text-13-medium text-text-weak">
                     {section() === "workflow"
                       ? "Build and manage Paddie workflows with the same account used for Studio templates."
+                      : section() === "data"
+                        ? "View Paddie Memory, AI RAG knowledge bases, and integration keys from your account."
                       : section() === "autopilot"
                         ? "Plan, build, test, preview, and iterate through a scoped native opencode worker session."
                       : section() === "inspiration"
@@ -925,6 +929,20 @@ export function TemplatePanel(props: {
                     }
                   >
                     <WorkflowBuilder onAttachWorkflow={attachWorkflow} />
+                  </Show>
+                </Show>
+
+                <Show when={section() === "data"}>
+                  <Show
+                    when={auth.isAuthenticated()}
+                    fallback={
+                      <LoginCard
+                        desc="Use your Paddie account to access Memory, AI RAG, and API keys"
+                        openLink={(url) => platform.openLink(url)}
+                      />
+                    }
+                  >
+                    <PaddieDataPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
                   </Show>
                 </Show>
 

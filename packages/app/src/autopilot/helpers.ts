@@ -1,3 +1,5 @@
+import { dataGoalNeedsPaddieSkill, paddieDataSkillInstruction } from "@/paddie-data/helpers"
+
 export type AutopilotRunStatus = "running" | "paused" | "stopped" | "completed"
 
 export type AutopilotStepStatus = "pending" | "active" | "done" | "blocked"
@@ -641,6 +643,7 @@ export function nativePlannerPrompt(run: AutopilotContextPayload, input?: Autopi
     "PADDIE_TASK_QUEUE_END",
     "If you choose a Paddie template, include exactly: PADDIE_TEMPLATE_ID: <id> and PADDIE_TEMPLATE_NAME: <name>.",
     "If you choose a Paddie workflow, include exactly: PADDIE_WORKFLOW_ID: <id> and PADDIE_WORKFLOW_NAME: <name>.",
+    autopilotGoalNeedsData(run.goal) ? paddieDataSkillInstruction() : "",
     "",
     resourceCatalog(input),
   ]
@@ -662,6 +665,7 @@ export function nativeWorkerPrompt(run: AutopilotContextPayload, input?: Autopil
     "- Use the existing opencode file, edit, shell, task/subagent, permission, and status systems.",
     "- Inspect the existing project before changing it; support blank projects and existing connected projects.",
     "- Select and adapt Paddie templates/workflows when useful or requested.",
+    autopilotGoalNeedsData(run.goal) ? `- ${paddieDataSkillInstruction()}` : "",
     "- Run available install, test, typecheck, build, and lint commands when appropriate.",
     "- Detect or start a local preview when relevant, inspect browser/runtime errors when possible, and fix failures.",
     "- Ask before destructive file actions, git push/release/deploy, credential use, payments, external messages, or publishing.",
@@ -812,6 +816,10 @@ export function matchAutopilotTemplates(
 
 export function autopilotGoalNeedsWorkflow(goal: string) {
   return /\b(workflow|workflows|automation|webhook|flow builder|workflow builder)\b/i.test(goal)
+}
+
+export function autopilotGoalNeedsData(goal: string) {
+  return dataGoalNeedsPaddieSkill(goal)
 }
 
 export function selectedTemplateFromText(value: string) {

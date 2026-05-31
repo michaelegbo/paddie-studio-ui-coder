@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import {
   addAutopilotEvent,
   autopilotContextFromRun,
+  autopilotGoalNeedsData,
   autopilotGoalNeedsTemplate,
   autopilotGoalNeedsWorkflow,
   autopilotHandoffFromText,
@@ -114,6 +115,22 @@ describe("autopilot helpers", () => {
     expect(nativePlannerPrompt(run)).toContain("PADDIE_AUTOPILOT_PHASE: planning")
     expect(nativeWorkerPrompt(run)).toContain("Use the existing opencode file, edit, shell, task/subagent")
     expect(nativeVerificationPrompt(run)).toContain("PADDIE_AUTOPILOT_PHASE: verifying")
+  })
+
+  test("adds the Paddie data integration skill instruction for Memory and RAG goals", () => {
+    const run = autopilotContextFromRun(
+      createAutopilotRun({
+        runID: "run-data",
+        now: "2026-05-22T10:00:00.000Z",
+        goal: "Add Paddie Memory and AI RAG knowledge base APIs",
+        workspace: "/repo",
+        model: { providerID: "openai", modelID: "gpt-5", variant: "high" },
+      }),
+    )
+
+    expect(nativePlannerPrompt(run)).toContain("paddie-data-integrator")
+    expect(nativeWorkerPrompt(run)).toContain("paddie-data-integrator")
+    expect(nativeWorkerPrompt(run)).toContain("do not pull unrelated tenant memory")
   })
 
   test("normalizes selected Autopilot workspaces", () => {
@@ -347,6 +364,7 @@ Changed files: app.tsx`),
   test("detects goals that need Studio resources", () => {
     expect(autopilotGoalNeedsTemplate("use one of my templates")).toBe(true)
     expect(autopilotGoalNeedsWorkflow("wire the workflow builder flow")).toBe(true)
+    expect(autopilotGoalNeedsData("integrate Paddie Memory and a knowledge base")).toBe(true)
   })
 
   test("transitions run state without losing the timeline", () => {

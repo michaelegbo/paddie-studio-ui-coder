@@ -32,4 +32,27 @@ describe("paddie api errors", () => {
   test("keeps generic errors plain", () => {
     expect(paddieApiErrorFromResponse(500, { error: "Nope" }).message).toBe("Nope")
   })
+
+  test("parses legacy RMN plan fields for Data limit errors", () => {
+    const err = paddieApiErrorFromResponse(402, {
+      success: false,
+      upgrade_required: true,
+      code: "KB_QUERY_LIMIT_EXCEEDED",
+      error: "RAG query limit exceeded",
+      plan: "free",
+      limit: 20,
+      current: 20,
+    })
+
+    expect(err).toBeInstanceOf(UpgradeRequiredError)
+    expect(err).toMatchObject({
+      code: "KB_QUERY_LIMIT_EXCEEDED",
+      message: "RAG query limit exceeded",
+      current_plan: "free",
+      current_tier: "free",
+      limit: 20,
+      current: 20,
+    })
+    expect(paddieApiErrorMessage(err)).toBe("RAG query limit exceeded (20/20)")
+  })
 })

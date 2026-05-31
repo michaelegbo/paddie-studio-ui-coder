@@ -48,6 +48,18 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                   </span>
                   <Show when={item.webhookUrl}>{(value) => <span class="break-all text-text-invert-base/70">{value()}</span>}</Show>
                 </div>
+              ) : item.type === "memory" ? (
+                <div class="flex max-w-[320px] flex-col gap-1">
+                  <span class="truncate text-text-invert-base">{item.label}</span>
+                  <span class="break-all text-text-invert-base/80">{item.userID}</span>
+                  <Show when={item.query}>{(value) => <span class="break-all text-text-invert-base/70">{value()}</span>}</Show>
+                </div>
+              ) : item.type === "knowledge-base" ? (
+                <div class="flex max-w-[320px] flex-col gap-1">
+                  <span class="truncate text-text-invert-base">{item.knowledgeBaseName}</span>
+                  <span class="break-all text-text-invert-base/80">{item.knowledgeBaseID}</span>
+                  <Show when={item.query}>{(value) => <span class="break-all text-text-invert-base/70">{value()}</span>}</Show>
+                </div>
               ) : item.type === "inspiration" ? (
                 <div class="flex max-w-[320px] flex-col gap-1">
                   <span class="truncate text-text-invert-base">{item.mode === "page" ? item.pageTitle : item.label}</span>
@@ -87,6 +99,10 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                     ) : item.type === "element" ? (
                       <Icon name="window-cursor" class="shrink-0 size-3.5 text-icon-info-base" />
                     ) : item.type === "workflow" ? (
+                      <Icon name="layout-right-full" class="shrink-0 size-3.5 text-icon-info-base" />
+                    ) : item.type === "memory" ? (
+                      <Icon name="brain" class="shrink-0 size-3.5 text-icon-info-base" />
+                    ) : item.type === "knowledge-base" ? (
                       <Icon name="layout-right-full" class="shrink-0 size-3.5 text-icon-info-base" />
                     ) : item.type === "inspiration" ? (
                       <Icon name="window-cursor" class="shrink-0 size-3.5 text-icon-info-base" />

@@ -26,6 +26,22 @@ export function contextItemChip(item: ContextItem & { key: string }) {
     }
   }
 
+  if (item.type === "memory") {
+    return {
+      label: item.label,
+      body: item.query || item.userID,
+      icon: "brain" as const,
+    }
+  }
+
+  if (item.type === "knowledge-base") {
+    return {
+      label: item.knowledgeBaseName,
+      body: item.query || item.label,
+      icon: "layout-right-full" as const,
+    }
+  }
+
   if (item.type === "inspiration") {
     return {
       label: item.mode === "page" ? item.pageTitle || item.label : item.label,

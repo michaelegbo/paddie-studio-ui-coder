@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
 import type { ContextItem, Prompt } from "@/context/prompt"
 
 let createPromptSubmit: typeof import("./submit").createPromptSubmit
@@ -30,6 +30,20 @@ let variant: string | undefined
 let promptAsyncError: Error | undefined
 
 const promptValue: Prompt = [{ type: "text", content: "ls", start: 0, end: 2 }]
+
+const sortedIndex = <T extends { id: string }>(items: T[], id: string) => {
+  const index = items.findIndex((item) => item.id >= id)
+  return index >= 0 ? index : items.length
+}
+
+const mergeParts = <T extends { id: string }>(current: T[] | undefined, want: T[]) => {
+  const parts = current?.slice() ?? []
+  for (const part of want) {
+    if (parts.some((item) => item.id === part.id)) continue
+    parts.splice(sortedIndex(parts, part.id), 0, part)
+  }
+  return parts
+}
 
 const clientFor = (directory: string) => {
   createdClients.push(directory)
@@ -81,8 +95,22 @@ beforeAll(async () => {
     showToast: () => 0,
   }))
 
+  const checksum = (content: string): string | undefined => {
+    if (!content) return undefined
+    let hash = 0x811c9dc5
+    for (let index = 0; index < content.length; index++) {
+      hash ^= content.charCodeAt(index)
+      hash = Math.imul(hash, 0x01000193)
+    }
+    return (hash >>> 0).toString(36)
+  }
+
   mock.module("@opencode-ai/core/util/encode", () => ({
     base64Encode: (value: string) => value,
+    base64Decode: (value: string) => value,
+    checksum,
+    sampledChecksum: checksum,
+    hash: async (value: string) => checksum(value) ?? "",
   }))
 
   mock.module("@/context/local", () => ({
@@ -136,6 +164,26 @@ beforeAll(async () => {
         setTabs: () => undefined,
       },
     }),
+    ensureSessionKey: (key: string, touch: (key: string) => void, seed: (key: string) => void) => {
+      touch(key)
+      seed(key)
+      return key
+    },
+    createSessionKeyReader: (sessionKey: string | (() => string), ensure: (key: string) => void) => {
+      const key = typeof sessionKey === "function" ? sessionKey : () => sessionKey
+      return () => {
+        const value = key()
+        ensure(value)
+        return value
+      }
+    },
+    pruneSessionKeys: (input: { keep?: string; max: number; used: Map<string, number>; view: string[]; tabs: string[] }) => {
+      if (!input.keep) return []
+      const keys = new Set<string>([...input.view, ...input.tabs])
+      if (keys.size <= input.max) return []
+      const score = (key: string) => key === input.keep ? Number.MAX_SAFE_INTEGER : input.used.get(key) ?? 0
+      return Array.from(keys).sort((a, b) => score(b) - score(a)).slice(input.max)
+    },
   }))
 
   mock.module("@/context/sdk", () => ({
@@ -174,6 +222,58 @@ beforeAll(async () => {
       },
       set: () => undefined,
     }),
+    applyOptimisticAdd: (
+      draft: { message: Record<string, Array<{ id: string }> | undefined>; part: Record<string, Array<{ id: string }> | undefined> },
+      input: { sessionID: string; message: { id: string }; parts: Array<{ id: string }> },
+    ) => {
+      const messages = draft.message[input.sessionID]
+      if (messages) {
+        messages.splice(sortedIndex(messages, input.message.id), 0, input.message)
+      } else {
+        draft.message[input.sessionID] = [input.message]
+      }
+      draft.part[input.message.id] = input.parts.slice().sort((a, b) => a.id.localeCompare(b.id))
+    },
+    applyOptimisticRemove: (
+      draft: { message: Record<string, Array<{ id: string }> | undefined>; part: Record<string, Array<{ id: string }> | undefined> },
+      input: { sessionID: string; messageID: string },
+    ) => {
+      const messages = draft.message[input.sessionID]
+      const index = messages?.findIndex((message) => message.id === input.messageID) ?? -1
+      if (messages && index >= 0) messages.splice(index, 1)
+      delete draft.part[input.messageID]
+    },
+    mergeOptimisticPage: (
+      page: {
+        session: Array<{ id: string }>
+        part: Array<{ id: string; part: Array<{ id: string }> }>
+        cursor?: string
+        complete: boolean
+      },
+      items: Array<{ message: { id: string }; parts: Array<{ id: string }> }>,
+    ) => {
+      const session = page.session.slice()
+      const part = new Map(page.part.map((item) => [item.id, item.part.slice().sort((a, b) => a.id.localeCompare(b.id))]))
+      const confirmed: string[] = []
+      for (const item of items) {
+        const index = sortedIndex(session, item.message.id)
+        const found = session[index]?.id === item.message.id
+        if (!found) session.splice(index, 0, item.message)
+        const current = part.get(item.message.id)
+        if (found && current && item.parts.every((want) => current.some((existing) => existing.id === want.id))) {
+          confirmed.push(item.message.id)
+          continue
+        }
+        part.set(item.message.id, mergeParts(current, item.parts))
+      }
+      return {
+        cursor: page.cursor,
+        complete: page.complete,
+        session,
+        part: Array.from(part.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([id, value]) => ({ id, part: value })),
+        confirmed,
+      }
+    },
   }))
 
   mock.module("@/context/global-sync", () => ({
@@ -213,6 +313,10 @@ beforeAll(async () => {
 
   const mod = await import("./submit")
   createPromptSubmit = mod.createPromptSubmit
+})
+
+afterAll(() => {
+  mock.restore()
 })
 
 beforeEach(() => {
@@ -414,6 +518,73 @@ describe("prompt submit worktree selection", () => {
       type: "inspiration",
       url: "https://example.com/",
       selector: "main > section.hero",
+    })
+  })
+
+  test("restores Paddie Data transient context when prompt send fails", async () => {
+    params = { id: "session-data" }
+    promptAsyncError = new Error("network down")
+    contextItems.push(
+      {
+        key: "memory:user_1:router:preferences",
+        type: "memory",
+        userID: "user_1",
+        mode: "router",
+        label: "Preferences",
+        query: "What should the app remember?",
+        content: "User prefers compact dashboards.",
+        memoryType: "preference",
+        endpoint: "/api/memory/router",
+        metadata: { confidence: 0.9 },
+        memories: [{ id: "mem_1", memory: "User prefers compact dashboards.", type: "preference" }],
+      },
+      {
+        key: "knowledge-base:kb_1:query:onboarding",
+        type: "knowledge-base",
+        knowledgeBaseID: "kb_1",
+        knowledgeBaseName: "Onboarding",
+        mode: "query",
+        label: "Onboarding query",
+        query: "How should onboarding work?",
+        answer: "Show a short checklist.",
+        sources: [{ document_id: "doc_1", document_name: "Guide.md", text: "Keep keys server-side." }],
+      },
+    )
+
+    const submit = createPromptSubmit({
+      info: () => ({ id: "session-data" }),
+      imageAttachments: () => [],
+      commentCount: () => 0,
+      autoAccept: () => false,
+      mode: () => "normal",
+      working: () => false,
+      editor: () => undefined,
+      queueScroll: () => undefined,
+      promptLength: (value) => value.reduce((sum, part) => sum + ("content" in part ? part.content.length : 0), 0),
+      addToHistory: () => undefined,
+      resetHistoryNavigation: () => undefined,
+      setMode: () => undefined,
+      setPopover: () => undefined,
+      onSubmit: () => undefined,
+    })
+
+    await submit.handleSubmit({ preventDefault: () => undefined } as unknown as Event)
+    for (let i = 0; i < 20 && contextAdds.length < 2; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    expect(contextRemoves).toContain("memory:user_1:router:preferences")
+    expect(contextRemoves).toContain("knowledge-base:kb_1:query:onboarding")
+    expect(contextAdds).toHaveLength(2)
+    expect(contextAdds[0]).toMatchObject({
+      type: "memory",
+      userID: "user_1",
+      query: "What should the app remember?",
+    })
+    expect(contextAdds[1]).toMatchObject({
+      type: "knowledge-base",
+      knowledgeBaseID: "kb_1",
+      query: "How should onboarding work?",
     })
   })
 
