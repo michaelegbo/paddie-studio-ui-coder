@@ -6,7 +6,8 @@ param(
   [string]$OutputDir = "$env:RUNNER_TEMP/paddie-store-msix",
   [string]$IdentityName = $env:MSIX_PACKAGE_IDENTITY_NAME,
   [string]$Publisher = $env:MSIX_PUBLISHER,
-  [string]$PublisherDisplayName = $env:MSIX_PUBLISHER_DISPLAY_NAME
+  [string]$PublisherDisplayName = $env:MSIX_PUBLISHER_DISPLAY_NAME,
+  [string]$PackageVersion
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,7 +25,19 @@ if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)(?:[.-].*)?$') {
   throw "MSIX package version must start with major.minor.patch, got '$Version'"
 }
 
-$packageVersion = "$($Matches[1]).$($Matches[2]).$($Matches[3]).0"
+$packageVersion = if ($PackageVersion) {
+  if ($PackageVersion -notmatch '^(\d+)\.(\d+)\.(\d+)\.(\d+)$') {
+    throw "MSIX PackageVersion must be four numeric fields, got '$PackageVersion'"
+  }
+  $PackageVersion
+} else {
+  "$($Matches[1]).$($Matches[2]).$($Matches[3]).0"
+}
+$packageVersion.Split(".") | ForEach-Object {
+  if ([int]$_ -gt 65535) {
+    throw "MSIX package version field '$_' is above the Windows package limit of 65535"
+  }
+}
 $resolvedTarget = (Resolve-Path -LiteralPath $TargetDir).Path
 $resolvedOutput = if (Test-Path -LiteralPath $OutputDir) {
   (Resolve-Path -LiteralPath $OutputDir).Path
