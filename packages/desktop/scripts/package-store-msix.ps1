@@ -38,11 +38,11 @@ $packageVersion.Split(".") | ForEach-Object {
     throw "MSIX package version field '$_' is above the Windows package limit of 65535"
   }
 }
-$resolvedTarget = (Resolve-Path -LiteralPath $TargetDir).Path
+$resolvedTarget = (Resolve-Path -LiteralPath $TargetDir).ProviderPath
 $resolvedOutput = if (Test-Path -LiteralPath $OutputDir) {
-  (Resolve-Path -LiteralPath $OutputDir).Path
+  (Resolve-Path -LiteralPath $OutputDir).ProviderPath
 } else {
-  (New-Item -ItemType Directory -Force -Path $OutputDir | Resolve-Path).Path
+  (New-Item -ItemType Directory -Force -Path $OutputDir | Resolve-Path).ProviderPath
 }
 $stageDir = Join-Path $resolvedOutput "stage"
 $stageRoot = [System.IO.Path]::GetFullPath($stageDir)
@@ -62,7 +62,7 @@ if (Test-Path -LiteralPath (Join-Path $resolvedTarget "opencode-cli.exe")) {
   Copy-Item -LiteralPath (Join-Path $resolvedTarget "opencode-cli.exe") -Destination (Join-Path $stageDir "opencode-cli.exe") -Force
 }
 
-$iconsDir = (Resolve-Path -LiteralPath "packages/desktop/src-tauri/icons/prod").Path
+$iconsDir = (Resolve-Path -LiteralPath "packages/desktop/src-tauri/icons/prod").ProviderPath
 @(
   "Square44x44Logo.png",
   "Square71x71Logo.png",
