@@ -178,6 +178,12 @@ jobs:
             --clientId "$env:PARTNER_CENTER_CLIENT_ID" `
             --clientSecret "$env:PARTNER_CENTER_CLIENT_SECRET"
 
+      - name: Publish Microsoft Store listing text and screenshots
+        shell: pwsh
+        run: |
+          ./packages/desktop/scripts/publish-store-listing.ps1 `
+            -ListingPath packages/desktop/store-listing/listing.en-US.json
+
       - name: Publish MSIX to Microsoft Store
         shell: pwsh
         run: |
