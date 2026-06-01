@@ -9,7 +9,11 @@ function Get-RequiredEnv([string]$Name) {
     if (-not $value) {
         throw "$Name is required for Microsoft Store listing publishing"
     }
-    return $value
+    $trimmed = $value.Trim().Trim([char]0xFEFF)
+    if (-not $trimmed) {
+        throw "$Name is required for Microsoft Store listing publishing"
+    }
+    return $trimmed
 }
 
 $tenantId = Get-RequiredEnv "PARTNER_CENTER_TENANT_ID"
