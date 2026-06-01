@@ -1,6 +1,9 @@
 name: paddie-desktop-release
 
 on:
+  push:
+    branches:
+      - dev
   workflow_dispatch:
     inputs:
       channel:
@@ -16,6 +19,8 @@ on:
         required: true
         type: string
 
+concurrency: paddie-desktop-release-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref }}
+
 permissions:
   contents: write
   id-token: write
@@ -25,7 +30,6 @@ jobs:
     runs-on: windows-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      OPENCODE_VERSION: ${{ inputs.version }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -38,23 +42,58 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: dev
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'dev' || github.ref }}
           fetch-depth: 0
 
+      - name: Resolve release inputs
+        id: release
+        shell: pwsh
+        run: |
+          $channel = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ inputs.channel }}" } else { "stable" }
+          $version = if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            "${{ inputs.version }}"
+          } else {
+            ((Get-Content -Raw -LiteralPath "packages/desktop/package.json" | ConvertFrom-Json).version -replace '[+-].*$', '')
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:[.-].*)?$') {
+            throw "Desktop release version '$version' must start with major.minor.patch"
+          }
+          "channel=$channel" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Release channel: $channel"
+          Write-Host "Release version: $version"
+
+      - name: Check release gate
+        id: release_gate
+        shell: pwsh
+        run: |
+          $shouldRelease = "true"
+          if ("${{ github.event_name }}" -eq "push") {
+            gh release view "v${{ steps.release.outputs.version }}" --repo $env:GITHUB_REPOSITORY *> $null
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "Stable release v${{ steps.release.outputs.version }} already exists. Skipping automatic release for this dev push."
+              $shouldRelease = "false"
+            }
+          }
+          "should_release=$shouldRelease" >> $env:GITHUB_OUTPUT
+
       - uses: ./.github/actions/setup-bun
+        if: steps.release_gate.outputs.should_release == 'true'
 
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.release_gate.outputs.should_release == 'true'
         with:
           targets: x86_64-pc-windows-msvc
 
       - uses: azure/login@v2
-        if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != '' }}
+        if: steps.release_gate.outputs.should_release == 'true' && env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != ''
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Validate updater signing secrets
+        if: steps.release_gate.outputs.should_release == 'true'
         shell: pwsh
         run: |
           if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
@@ -65,16 +104,17 @@ jobs:
           }
 
       - name: Set desktop version
+        if: steps.release_gate.outputs.should_release == 'true'
         shell: pwsh
         run: |
           $packagePath = "packages/desktop/package.json"
           $package = Get-Content -Raw -LiteralPath $packagePath | ConvertFrom-Json
-          $package.version = "${{ inputs.version }}"
+          $package.version = "${{ steps.release.outputs.version }}"
           $package | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $packagePath
 
           $cargoPath = "packages/desktop/src-tauri/Cargo.toml"
           $cargo = Get-Content -Raw -LiteralPath $cargoPath
-          $cargo = $cargo -replace '(?m)^version = "[^"]+"', 'version = "${{ inputs.version }}"'
+          $cargo = $cargo -replace '(?m)^version = "[^"]+"', 'version = "${{ steps.release.outputs.version }}"'
           Set-Content -LiteralPath $cargoPath -Value $cargo
 
           Push-Location packages/desktop/src-tauri
@@ -82,6 +122,7 @@ jobs:
           Pop-Location
 
       - name: Reinstall dependencies for Bun compile
+        if: steps.release_gate.outputs.should_release == 'true'
         shell: pwsh
         run: |
           Remove-Item -Recurse -Force node_modules -ErrorAction SilentlyContinue
@@ -91,7 +132,10 @@ jobs:
           bun install
 
       - name: Build sidecar CLI
+        if: steps.release_gate.outputs.should_release == 'true'
         shell: pwsh
+        env:
+          OPENCODE_VERSION: ${{ steps.release.outputs.version }}
         run: |
           bun ./packages/opencode/script/build.ts --single --baseline
           New-Item -ItemType Directory -Force -Path packages/desktop/src-tauri/sidecars | Out-Null
@@ -108,23 +152,26 @@ jobs:
             -Force
 
       - name: Build Tauri installer
+        if: steps.release_gate.outputs.should_release == 'true'
         shell: pwsh
         env:
+          OPENCODE_VERSION: ${{ steps.release.outputs.version }}
           RUST_TARGET: x86_64-pc-windows-msvc
           TAURI_ENV_TARGET_TRIPLE: x86_64-pc-windows-msvc
         run: |
-          $channel = "${{ inputs.channel }}"
+          $channel = "${{ steps.release.outputs.channel }}"
           $env:OPENCODE_CHANNEL = if ($channel -eq "beta") { "beta" } elseif ($channel -eq "dev") { "dev" } else { "prod" }
           $env:VITE_OPENCODE_CHANNEL = $env:OPENCODE_CHANNEL
           $config = if ($channel -eq "beta") { "src-tauri/tauri.beta.conf.json" } elseif ($channel -eq "dev") { "src-tauri/tauri.conf.json" } else { "src-tauri/tauri.prod.conf.json" }
           bun run --cwd packages/desktop tauri build --target x86_64-pc-windows-msvc --bundles nsis --config $config
 
       - name: Prepare release assets
+        if: steps.release_gate.outputs.should_release == 'true'
         id: assets
         shell: pwsh
         run: |
-          $version = "${{ inputs.version }}"
-          $channel = "${{ inputs.channel }}"
+          $version = "${{ steps.release.outputs.version }}"
+          $channel = "${{ steps.release.outputs.channel }}"
           $isBeta = $channel -eq "beta"
           $isDev = $channel -eq "dev"
           $bundleDir = "packages/desktop/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
@@ -175,10 +222,11 @@ jobs:
           "asset_name=$assetName" >> $env:GITHUB_OUTPUT
 
       - name: Publish GitHub release
+        if: steps.release_gate.outputs.should_release == 'true'
         shell: pwsh
         run: |
-          $version = "${{ inputs.version }}"
-          $channel = "${{ inputs.channel }}"
+          $version = "${{ steps.release.outputs.version }}"
+          $channel = "${{ steps.release.outputs.channel }}"
           $tag = "v$version"
           $target = (git rev-parse HEAD).Trim()
           $isBeta = $channel -eq "beta"
@@ -225,7 +273,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: ${{ always() && steps.assets.outputs.asset != '' }}
         with:
-          name: paddie-desktop-${{ inputs.channel }}-${{ inputs.version }}
+          name: paddie-desktop-${{ steps.release.outputs.channel }}-${{ steps.release.outputs.version }}
           path: |
             ${{ steps.assets.outputs.asset }}
             ${{ steps.assets.outputs.signature }}
