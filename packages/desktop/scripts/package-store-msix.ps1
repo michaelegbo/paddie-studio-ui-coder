@@ -151,7 +151,23 @@ if ($LASTEXITCODE -ne 0) {
   throw "MakeAppx failed with exit code $LASTEXITCODE"
 }
 
-if ($env:GITHUB_OUTPUT) {
-  "msix=$msixPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+$bundleStageDir = Join-Path $resolvedOutput "bundle-stage"
+$bundleStageRoot = [System.IO.Path]::GetFullPath($bundleStageDir)
+if (-not $bundleStageRoot.StartsWith($outputRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+  throw "Refusing to stage MSIX bundle outside the output directory"
 }
-Write-Host "Created $msixPath"
+Remove-Item -Recurse -Force -LiteralPath $bundleStageDir -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $bundleStageDir | Out-Null
+Copy-Item -LiteralPath $msixPath -Destination (Join-Path $bundleStageDir (Split-Path -Leaf $msixPath)) -Force
+
+$bundlePath = Join-Path $resolvedOutput "PaddieStudio_$($packageVersion)_x64.msixbundle"
+Remove-Item -Force -LiteralPath $bundlePath -ErrorAction SilentlyContinue
+& $makeAppx.FullName bundle /d $bundleStageDir /p $bundlePath /o
+if ($LASTEXITCODE -ne 0) {
+  throw "MakeAppx bundle failed with exit code $LASTEXITCODE"
+}
+
+if ($env:GITHUB_OUTPUT) {
+  "msix=$bundlePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+}
+Write-Host "Created $bundlePath"

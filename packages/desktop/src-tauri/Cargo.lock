@@ -3201,7 +3201,7 @@ dependencies = [
 
 [[package]]
 name = "opencode-desktop"
-version = "1.4.70-beta.1"
+version = "1.4.81"
 dependencies = [
  "chrono",
  "comrak",
@@ -3243,6 +3243,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "webkit2gtk",
+ "windows 0.61.3",
  "windows-core 0.62.2",
  "windows-sys 0.61.2",
 ]
