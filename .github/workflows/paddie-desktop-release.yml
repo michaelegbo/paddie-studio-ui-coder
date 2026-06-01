@@ -70,7 +70,9 @@ jobs:
           $shouldRelease = "true"
           if ("${{ github.event_name }}" -eq "push") {
             gh release view "v${{ steps.release.outputs.version }}" --repo $env:GITHUB_REPOSITORY *> $null
-            if ($LASTEXITCODE -eq 0) {
+            $releaseExists = $LASTEXITCODE -eq 0
+            $global:LASTEXITCODE = 0
+            if ($releaseExists) {
               Write-Host "Stable release v${{ steps.release.outputs.version }} already exists. Skipping automatic release for this dev push."
               $shouldRelease = "false"
             }
