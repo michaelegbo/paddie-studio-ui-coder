@@ -19,7 +19,7 @@ import type { AsyncStorage } from "@solid-primitives/storage"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { readImage } from "@tauri-apps/plugin-clipboard-manager"
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link"
-import { open, save } from "@tauri-apps/plugin-dialog"
+import { message, open, save } from "@tauri-apps/plugin-dialog"
 import { exists, mkdir, readDir, readTextFile, stat, watch, writeTextFile } from "@tauri-apps/plugin-fs"
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http"
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification"
@@ -47,6 +47,7 @@ if (import.meta.env.DEV && !(root instanceof HTMLElement)) {
 void initI18n()
 
 let update: Update | null = null
+let updateSource: "github" | "microsoft_store" | null = null
 
 const deepLinkEvents = ["paddiestudio:deep-link", "opencode:deep-link"] as const
 
@@ -319,19 +320,52 @@ const createPlatform = (): Platform => {
     })(),
 
     checkUpdate: async () => {
-      if (!UPDATER_ENABLED) return { updateAvailable: false }
+      if (os === "windows") {
+        const storeUpdate = await commands.checkStoreUpdate().catch(() => null)
+        if (storeUpdate?.packaged) {
+          update = null
+          updateSource = storeUpdate.updateAvailable ? "microsoft_store" : null
+          return {
+            updateAvailable: storeUpdate.updateAvailable,
+            version: storeUpdate.version ?? undefined,
+          }
+        }
+      }
+
+      if (!UPDATER_ENABLED) {
+        updateSource = null
+        return { updateAvailable: false }
+      }
       const next = await check().catch(() => null)
-      if (!next) return { updateAvailable: false }
+      if (!next) {
+        updateSource = null
+        return { updateAvailable: false }
+      }
       const ok = await next
         .download()
         .then(() => true)
         .catch(() => false)
-      if (!ok) return { updateAvailable: false }
+      if (!ok) {
+        updateSource = null
+        return { updateAvailable: false }
+      }
       update = next
+      updateSource = "github"
       return { updateAvailable: true, version: next.version }
     },
 
     updateAndRestart: async () => {
+      if (updateSource === "microsoft_store") {
+        try {
+          await commands.installStoreUpdate()
+          await commands.killSidecar().catch(() => undefined)
+          await relaunch()
+        } catch {
+          await message(t("desktop.updater.installFailed.message"), { title: t("desktop.updater.installFailed.title") })
+        }
+        return
+      }
+
       if (!UPDATER_ENABLED || !update) return
       if (ostype() === "windows") await commands.killSidecar().catch(() => undefined)
       await update.install().catch(() => undefined)

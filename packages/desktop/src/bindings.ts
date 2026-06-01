@@ -19,6 +19,8 @@ export const commands = {
 	wslPath: (path: string, mode: "windows" | "linux" | null) => __TAURI_INVOKE<string>("wsl_path", { path, mode }),
 	resolveAppPath: (appName: string) => __TAURI_INVOKE<string | null>("resolve_app_path", { appName }),
 	openPath: (path: string, appName: string | null) => __TAURI_INVOKE<null>("open_path", { path, appName }),
+	checkStoreUpdate: () => __TAURI_INVOKE<StoreUpdateCheck>("check_store_update"),
+	installStoreUpdate: () => __TAURI_INVOKE<null>("install_store_update"),
 };
 
 /** Events */
@@ -41,6 +43,15 @@ export type ServerReadyData = {
 	};
 
 export type SqliteMigrationProgress = { type: "InProgress"; value: number } | { type: "Done" };
+
+export type StoreUpdateCheck = {
+		packaged: boolean,
+		updateAvailable: boolean,
+		version: string | null,
+		currentVersion: string | null,
+		mandatory: boolean,
+		error: string | null,
+	};
 
 export type WslConfig = {
 		enabled: boolean,
