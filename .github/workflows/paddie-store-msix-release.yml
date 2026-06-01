@@ -104,19 +104,38 @@ jobs:
       - name: Validate Store secrets
         shell: pwsh
         run: |
+          function Require-TrimmedEnv([string]$Name) {
+            $value = [Environment]::GetEnvironmentVariable($Name)
+            if (-not $value) {
+              throw "$Name is required for Microsoft Store publishing"
+            }
+            $trimmed = $value.Trim().Trim([char]0xFEFF)
+            if (-not $trimmed) {
+              throw "$Name is required for Microsoft Store publishing"
+            }
+            "$Name=$trimmed" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+            return $trimmed
+          }
+
+          $tenantId = Require-TrimmedEnv "PARTNER_CENTER_TENANT_ID"
+          $clientId = Require-TrimmedEnv "PARTNER_CENTER_CLIENT_ID"
+          $ignoredGuid = [Guid]::Empty
+          if (-not [Guid]::TryParse($tenantId, [ref]$ignoredGuid)) {
+            throw "PARTNER_CENTER_TENANT_ID must be a GUID"
+          }
+          if (-not [Guid]::TryParse($clientId, [ref]$ignoredGuid)) {
+            throw "PARTNER_CENTER_CLIENT_ID must be a GUID"
+          }
+
           @(
-            "PARTNER_CENTER_TENANT_ID",
             "PARTNER_CENTER_SELLER_ID",
-            "PARTNER_CENTER_CLIENT_ID",
             "PARTNER_CENTER_CLIENT_SECRET",
             "MICROSOFT_STORE_PRODUCT_ID",
             "MSIX_PACKAGE_IDENTITY_NAME",
             "MSIX_PUBLISHER",
             "MSIX_PUBLISHER_DISPLAY_NAME"
           ) | ForEach-Object {
-            if (-not [Environment]::GetEnvironmentVariable($_)) {
-              throw "$_ is required for Microsoft Store publishing"
-            }
+            Require-TrimmedEnv $_ | Out-Null
           }
 
       - name: Set desktop version
@@ -184,11 +203,15 @@ jobs:
       - name: Configure Microsoft Store credentials
         shell: pwsh
         run: |
+          $tenantId = $env:PARTNER_CENTER_TENANT_ID.Trim().Trim([char]0xFEFF)
+          $sellerId = $env:PARTNER_CENTER_SELLER_ID.Trim().Trim([char]0xFEFF)
+          $clientId = $env:PARTNER_CENTER_CLIENT_ID.Trim().Trim([char]0xFEFF)
+          $clientSecret = $env:PARTNER_CENTER_CLIENT_SECRET.Trim().Trim([char]0xFEFF)
           msstore reconfigure `
-            --tenantId "$env:PARTNER_CENTER_TENANT_ID" `
-            --sellerId "$env:PARTNER_CENTER_SELLER_ID" `
-            --clientId "$env:PARTNER_CENTER_CLIENT_ID" `
-            --clientSecret "$env:PARTNER_CENTER_CLIENT_SECRET"
+            --tenantId "$tenantId" `
+            --sellerId "$sellerId" `
+            --clientId "$clientId" `
+            --clientSecret "$clientSecret"
 
       - name: Publish Microsoft Store listing text and screenshots
         shell: pwsh
@@ -199,9 +222,10 @@ jobs:
       - name: Publish MSIX to Microsoft Store
         shell: pwsh
         run: |
+          $appId = $env:MICROSOFT_STORE_PRODUCT_ID.Trim().Trim([char]0xFEFF)
           msstore publish "." `
             --inputFile "${{ steps.package.outputs.msix }}" `
-            --appId "$env:MICROSOFT_STORE_PRODUCT_ID"
+            --appId "$appId"
 
       - uses: actions/upload-artifact@v4
         if: ${{ always() && steps.package.outputs.msix != '' }}
