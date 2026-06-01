@@ -223,6 +223,7 @@ jobs:
           }
 
       - uses: actions/upload-artifact@v4
+        if: ${{ always() && steps.assets.outputs.asset != '' }}
         with:
           name: paddie-desktop-${{ inputs.channel }}-${{ inputs.version }}
           path: |
