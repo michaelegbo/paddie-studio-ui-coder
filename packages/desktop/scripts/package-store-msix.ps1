@@ -12,6 +12,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$IdentityName = if ($IdentityName) { $IdentityName.Trim().Trim([char]0xFEFF) } else { $IdentityName }
+$Publisher = if ($Publisher) { $Publisher.Trim().Trim([char]0xFEFF) } else { $Publisher }
+$PublisherDisplayName = if ($PublisherDisplayName) { $PublisherDisplayName.Trim().Trim([char]0xFEFF) } else { $PublisherDisplayName }
+
 if (-not $IdentityName) {
   throw "MSIX_PACKAGE_IDENTITY_NAME is required"
 }
