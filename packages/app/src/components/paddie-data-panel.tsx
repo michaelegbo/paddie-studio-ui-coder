@@ -6,6 +6,7 @@ import { useAuth } from "@/context/auth"
 import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
 import { paddieApi, paddieApiErrorMessage, UpgradeRequiredError } from "@/lib/paddie-api"
+import { PaddiePlaygroundPanel } from "@/components/paddie-playground-panel"
 import {
   fileToBase64,
   knowledgeBaseID,
@@ -18,12 +19,11 @@ import {
   type PaddieKnowledgeBaseDocument,
   type PaddieKnowledgeBaseQueryResult,
   type PaddieMemoryList,
-  type PaddieMemoryRecord,
   type PaddieMemoryRouterResponse,
   type PaddieMemoryUser,
 } from "@/paddie-data/helpers"
 
-type DataSection = "memory" | "knowledge" | "api"
+type DataSection = "playground" | "memory" | "knowledge" | "api"
 type RouterMode = "auto" | "conversation" | "store" | "retrieve"
 type MemoryType = "" | "short_term" | "episodic" | "semantic" | "procedural" | "preference" | "working" | "summary" | "artifact"
 
@@ -59,7 +59,7 @@ export function PaddieDataPanel(props: {
   const auth = useAuth()
   const platform = usePlatform()
   const prompt = usePrompt()
-  const [section, setSection] = createSignal<DataSection>("memory")
+  const [section, setSection] = createSignal<DataSection>("playground")
 
   const [memoryUsers, setMemoryUsers] = createSignal<PaddieMemoryUser[]>([])
   const [memoryUserID, setMemoryUserID] = createSignal(auth.user()?.userId ?? "")
@@ -68,8 +68,6 @@ export function PaddieDataPanel(props: {
   const [memories, setMemories] = createSignal<PaddieMemoryList>()
   const [memoryLoading, setMemoryLoading] = createSignal(false)
   const [memoryError, setMemoryError] = createSignal<unknown>()
-  const [newMemory, setNewMemory] = createSignal("")
-  const [newMemoryType, setNewMemoryType] = createSignal<MemoryType>("")
   const [routerQuery, setRouterQuery] = createSignal("")
   const [routerMode, setRouterMode] = createSignal<RouterMode>("auto")
   const [routerResult, setRouterResult] = createSignal<PaddieMemoryRouterResponse>()
@@ -117,6 +115,25 @@ export function PaddieDataPanel(props: {
       "})",
     ].join("\n"),
   )
+  const knowledgeBaseSnippet = createMemo(() =>
+    [
+      `const knowledgeBaseId = "${selectedKnowledgeBaseID() || "<KB_ID>"}"`,
+      "",
+      `fetch(\`${apiBase()}/knowledge-bases/\${knowledgeBaseId}/query\`, {`,
+      "  method: \"POST\",",
+      "  headers: {",
+      "    \"content-type\": \"application/json\",",
+      "    \"x-api-key\": process.env.PADDIE_API_KEY",
+      "  },",
+      "  body: JSON.stringify({",
+      "    query: userQuestion,",
+      "    limit: 8,",
+      "    generateAnswer: true,",
+      "    includeGraph: true",
+      "  })",
+      "})",
+    ].join("\n"),
+  )
 
   const focusPrompt = () => {
     if (props.chatHidden) props.onChatToggle?.()
@@ -149,29 +166,6 @@ export function PaddieDataPanel(props: {
       if (memorySearch().trim()) params.set("search", memorySearch().trim())
       if (memoryType()) params.set("type", memoryType())
       setMemories(await paddieApi.get<PaddieMemoryList>(`/memories?${params.toString()}`))
-    } catch (err) {
-      setMemoryError(err)
-    } finally {
-      setMemoryLoading(false)
-    }
-  }
-
-  const createMemory = async () => {
-    const content = newMemory().trim()
-    const userID = memoryUserID().trim()
-    if (!content || !userID) return
-    setMemoryLoading(true)
-    setMemoryError(undefined)
-    try {
-      await paddieApi.post<PaddieMemoryRecord>("/memories", {
-        content,
-        user_id: userID,
-        type: newMemoryType() || undefined,
-      })
-      setNewMemory("")
-      showToast({ title: "Memory saved", description: "RMN indexed the memory for this user." })
-      await loadMemories()
-      await loadMemoryUsers().catch(() => undefined)
     } catch (err) {
       setMemoryError(err)
     } finally {
@@ -350,43 +344,65 @@ export function PaddieDataPanel(props: {
     }
   }
 
-  const attachKnowledgeBaseResult = () => {
-    const kb = selectedKnowledgeBase()
-    const result = kbQueryResult()
-    if (!kb || !result) return
-    prompt.context.add({
-      type: "knowledge-base",
-      knowledgeBaseID: knowledgeBaseID(kb),
-      knowledgeBaseName: kb.name,
-      mode: "query",
-      label: kbQuery().trim() || "Knowledge Base query",
-      query: kbQuery().trim(),
-      answer: result.answer ?? undefined,
-      sources: result.results,
-    })
-    focusPrompt()
-    showToast({ title: "RAG result added to chat", description: kb.name })
-  }
-
   const attachMemoryApiNote = () => {
     attachMemoryService("What should this app remember?")
   }
 
-  const attachKnowledgeBaseApiNote = () => {
+  const knowledgeBaseSummaries = () =>
+    knowledgeBases().flatMap((kb) => {
+      const id = knowledgeBaseID(kb)
+      if (!id) return []
+      return [{
+        id,
+        name: kb.name,
+        documentCount: kb.document_count,
+        chunkCount: kb.chunk_count,
+      }]
+    })
+
+  const attachKnowledgeBaseIntegration = (scope: "selected" | "all" = "selected") => {
     const kb = selectedKnowledgeBase()
     const detail = kbApiDetail()
-    if (!kb || !detail) return
+    const selectedID = kb ? knowledgeBaseID(kb) : ""
+    const allKnowledgeBases = knowledgeBaseSummaries()
+    const knowledgeBasesForContext = scope === "all" ? allKnowledgeBases : allKnowledgeBases.filter((item) => item.id === selectedID)
+    if (scope === "selected" && (!kb || !selectedID)) return
+    if (scope === "all" && knowledgeBasesForContext.length === 0) return
+    const query = kbQuery().trim() || "Integrate Paddie AI RAG"
+    const endpoint = scope === "all"
+      ? `${apiBase()}/knowledge-bases/<KB_ID>/query`
+      : detail?.endpoint || `${apiBase()}/knowledge-bases/${selectedID}/query`
+    const integrationNote = [
+      `API base: ${apiBase()}`,
+      `Endpoint: ${endpoint}`,
+      "API key: read PADDIE_API_KEY from trusted server-side environment or secret storage.",
+      scope === "all"
+        ? "Knowledge base strategy: expose a runtime selector or configuration that can query any attached Paddie knowledge base by ID."
+        : `Knowledge base strategy: wire runtime queries to ${kb?.name} (${selectedID}).`,
+      "Integration behavior: call the Knowledge Base query endpoint at runtime with the user's question, then render the generated answer and citations/source snippets in the app.",
+      "Do not embed this playground query result, source chunks, or uploaded document text as static app content.",
+      "For client-only projects, create a backend route first; do not ship PADDIE_API_KEY in browser code.",
+    ].join("\n")
+
     prompt.context.add({
       type: "knowledge-base",
-      knowledgeBaseID: detail.knowledge_base_id,
-      knowledgeBaseName: kb.name,
-      mode: "api",
-      label: "Knowledge Base API",
-      query: "Integrate Paddie AI RAG",
-      apiNote: detail.curl,
+      knowledgeBaseID: scope === "all" ? "*" : selectedID,
+      knowledgeBaseName: scope === "all" ? "All Paddie knowledge bases" : kb?.name ?? "Knowledge Base",
+      mode: scope === "all" ? "all" : "integration",
+      label: scope === "all" ? "All Knowledge Bases" : "Knowledge Base integration",
+      query,
+      apiBase: apiBase(),
+      apiKeyEnv: "PADDIE_API_KEY",
+      endpoint,
+      integrationNote,
+      apiNote: detail?.curl,
+      knowledgeBases: knowledgeBasesForContext,
     })
     focusPrompt()
-    showToast({ title: "RAG API note added", description: kb.name })
+    showToast({
+      title: scope === "all" ? "Knowledge bases added" : "Knowledge base added",
+      description: scope === "all" ? "The agent will integrate runtime RAG across the selected KB scope." : kb?.name,
+    })
   }
 
   const loadApiKeys = async () => {
@@ -491,12 +507,21 @@ export function PaddieDataPanel(props: {
               <div class="mt-1 text-12-medium text-text-weak">Memory, AI RAG, and API keys from your Paddie account.</div>
             </div>
             <div class="rounded-xl border border-border-weaker-base bg-background-base p-1 flex items-center gap-1">
+              {tab("playground", "Playground")}
               {tab("memory", "Memory")}
               {tab("knowledge", "Knowledge Base")}
               {tab("api", "API")}
             </div>
           </div>
         </div>
+
+        <Show when={section() === "playground"}>
+          <PaddiePlaygroundPanel
+            chatHidden={props.chatHidden}
+            onChatToggle={props.onChatToggle}
+            openApiTab={() => setSection("api")}
+          />
+        </Show>
 
         <Show when={section() === "memory"}>
           <div class="grid gap-3 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
@@ -564,18 +589,7 @@ export function PaddieDataPanel(props: {
             </Panel>
 
             <div class="flex flex-col gap-3">
-              <Panel title="Create memory">
-                <textarea class={`${inputClass} min-h-24 py-2`} value={newMemory()} onInput={(event) => setNewMemory(event.currentTarget.value)} placeholder="Store a memory for this user" />
-                <div class="mt-2 flex flex-wrap gap-2">
-                  <select class={`${inputClass} max-w-[180px]`} value={newMemoryType()} onChange={(event) => setNewMemoryType(event.currentTarget.value as MemoryType)}>
-                    <For each={memoryTypes}>{(type) => <option value={type}>{type || "Auto type"}</option>}</For>
-                  </select>
-                  <Button class="h-9 px-3 text-12-medium" disabled={!newMemory().trim() || !memoryUserID().trim() || memoryLoading()} onClick={() => void createMemory()}>
-                    Save memory
-                  </Button>
-                </div>
-              </Panel>
-              <Panel title="Memory Router">
+              <Panel title="Memory playground">
                 <textarea class={`${inputClass} min-h-20 py-2`} value={routerQuery()} onInput={(event) => setRouterQuery(event.currentTarget.value)} placeholder="Ask, store, retrieve, summarize, or update memory" />
                 <div class="mt-2 flex flex-wrap gap-2">
                   <select class={`${inputClass} max-w-[170px]`} value={routerMode()} onChange={(event) => setRouterMode(event.currentTarget.value as RouterMode)}>
@@ -600,7 +614,17 @@ export function PaddieDataPanel(props: {
 
         <Show when={section() === "knowledge"}>
           <div class="grid gap-3 xl:grid-cols-[330px_minmax(0,1fr)]">
-            <Panel title="Knowledge bases" action={<Button variant="ghost" class="h-8 px-3 text-11-medium" disabled={kbLoading()} onClick={() => void loadKnowledgeBases()}>Refresh</Button>}>
+            <Panel
+              title="Knowledge bases"
+              action={
+                <div class="flex items-center gap-2">
+                  <Button variant="ghost" class="h-8 px-3 text-11-medium" disabled={kbLoading()} onClick={() => void loadKnowledgeBases()}>Refresh</Button>
+                  <Button class="h-8 px-3 text-11-medium" disabled={knowledgeBases().length === 0} onClick={() => attachKnowledgeBaseIntegration("all")}>
+                    Attach all
+                  </Button>
+                </div>
+              }
+            >
               <ErrorNotice error={kbError()} text={kbErrorText()} openPlans={() => platform.openLink("https://paddie.io/pricing")} />
               <div class="space-y-2">
                 <For each={knowledgeBases()}>
@@ -633,7 +657,14 @@ export function PaddieDataPanel(props: {
             </Panel>
 
             <div class="flex flex-col gap-3">
-              <Panel title={selectedKnowledgeBase()?.name ?? "Select a knowledge base"}>
+              <Panel
+                title={selectedKnowledgeBase()?.name ?? "Select a knowledge base"}
+                action={
+                  <Button class="h-8 px-3 text-11-medium" disabled={!selectedKnowledgeBaseID()} onClick={() => attachKnowledgeBaseIntegration("selected")}>
+                    Attach selected
+                  </Button>
+                }
+              >
                 <div class="grid gap-3 lg:grid-cols-2">
                   <div>
                     <div class="text-12-medium text-text-base">Upload or paste a document</div>
@@ -666,17 +697,14 @@ export function PaddieDataPanel(props: {
                 </div>
               </Panel>
 
-              <Panel title="Query RAG">
+              <Panel title="RAG playground">
                 <textarea class={`${inputClass} min-h-20 py-2`} value={kbQuery()} onInput={(event) => setKbQuery(event.currentTarget.value)} placeholder="Ask this knowledge base a question" />
                 <div class="mt-2 flex flex-wrap gap-2">
                   <Button class="h-9 px-3 text-12-medium" disabled={!selectedKnowledgeBaseID() || !kbQuery().trim() || kbLoading()} onClick={() => void queryKnowledgeBase()}>
                     Query
                   </Button>
-                  <Button variant="ghost" class="h-9 px-3 text-12-medium" disabled={!kbQueryResult()} onClick={attachKnowledgeBaseResult}>
-                    Attach result
-                  </Button>
-                  <Button variant="ghost" class="h-9 px-3 text-12-medium" disabled={!kbApiDetail()} onClick={attachKnowledgeBaseApiNote}>
-                    Attach API note
+                  <Button variant="ghost" class="h-9 px-3 text-12-medium" disabled={!selectedKnowledgeBaseID()} onClick={() => attachKnowledgeBaseIntegration("selected")}>
+                    Attach selected KB
                   </Button>
                 </div>
                 <Show when={kbQueryResult()}>
@@ -735,7 +763,7 @@ export function PaddieDataPanel(props: {
             <Panel title="Integration snippets">
               <div class="space-y-3">
                 <Snippet title="Memory Router" text={memoryRouterSnippet()} copy={copy} attach={attachMemoryApiNote} />
-                <Snippet title="Knowledge Base Query" text={`fetch("${apiBase()}/knowledge-bases/${selectedKnowledgeBaseID() || "<KB_ID>"}/query", {\n  method: "POST",\n  headers: {\n    "content-type": "application/json",\n    "x-api-key": process.env.PADDIE_API_KEY\n  },\n  body: JSON.stringify({\n    query: "What does this document say?",\n    limit: 8,\n    generateAnswer: true,\n    includeGraph: true\n  })\n})`} copy={copy} attach={kbApiDetail() ? attachKnowledgeBaseApiNote : undefined} />
+                <Snippet title="Knowledge Base API" text={knowledgeBaseSnippet()} copy={copy} attach={selectedKnowledgeBaseID() ? () => attachKnowledgeBaseIntegration("selected") : undefined} />
               </div>
             </Panel>
           </div>

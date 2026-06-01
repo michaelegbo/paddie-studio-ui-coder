@@ -10,6 +10,8 @@ Use this skill when implementing Paddie Memory, Memory Router, Knowledge Base, A
 - Never hardcode API keys, JWTs, tenant IDs, or secrets into client bundles. Use server routes, environment variables, or platform secret storage.
 - Keep user memory explicitly scoped by `user_id`; do not fetch unrelated tenant memory unless the user asks and authorization is already in place.
 - Treat Memory attachments from Studio as a service-integration request, not as a request to paste individual memory records into code.
+- Treat Knowledge Base attachments from Studio as a runtime RAG integration request for one selected knowledge base or the selected account knowledge-base scope, not as a request to paste query answers, chunks, or document text into code.
+- Treat Playground attachments from Studio as a dynamic implementation contract. Use the selected playground settings to scaffold runtime code; do not copy the playground transcript, returned memories, RAG answers, source chunks, or API-key values into the app.
 - Create or resolve a stable Paddie Memory `user_id` dynamically for each end user at runtime, persist that mapping in the app's auth profile, database, or local profile store, and pass it on every Memory Router call.
 - Preserve RMN plan gates. Show upgrade/limit errors from the API instead of bypassing or duplicating access checks.
 - Prefer small adapters, hooks, services, or route handlers that can be reused by the app.
@@ -69,9 +71,31 @@ export async function runPaddieMemory(input: { appUser: { id?: string; email?: s
 
 ## Manual Memory
 
-Use `POST /api/memories` when the app has an explicit memory to save.
+Use `POST /api/memories` only when the user explicitly asks for manual memory-management UI or an explicit memory save action. For normal app memory behavior, prefer Memory Router `mode: "conversation"` so RMN decides what to retrieve and store.
 
 Use `GET /api/memories?userId=<id>` for a user-scoped memory list. Add `search`, `type`, `limit`, and `page` when the UI needs filtering.
+
+## Playground Attachments
+
+When Studio attaches the Paddie Data Playground, treat it as a tested configuration for the app to implement dynamically.
+
+Use the attached fields this way:
+
+- `apiBase` and `apiKeyEnv`: configure a server-side Paddie client. Never expose the API key in browser code.
+- `mode`, `routerMode`, `strategy`, and `memoryType`: set defaults for Memory Router or manual memory tools. Router mode should usually drive runtime behavior; manual mode is for explicit search/list UIs.
+- `selectedExplorerUserID`: testing only. Do not hardcode it in product code.
+- `userIDStrategy`: implement this mapping so each end user gets a stable dynamic Paddie Memory `user_id`.
+- `knowledgeBases`: query the selected knowledge base IDs at runtime. If no IDs are attached, load available knowledge bases or expose a selector before querying.
+- `sampleQuery`, `persona`, and `model`: use as implementation/testing hints, not as a second credential system.
+
+Good implementation output is usually a small package of reusable pieces:
+
+- a server route or service for `runPaddieMemory`
+- a server route or service for `queryPaddieKnowledgeBase`
+- a frontend hook/service that calls those routes
+- UI states for loading, answer, source citations, upgrade/limit errors, and unavailable data
+
+Do not generate code that embeds static memory rows, static RAG answers, or copied source chunks. The app should call RMN/Paddie at runtime with the current user, selected knowledge base, and current question.
 
 ## Knowledge Base / AI RAG
 
@@ -95,6 +119,8 @@ For querying, default to:
   "includeGraph": true
 }
 ```
+
+When Studio attaches a selected knowledge base, wire the app to query that knowledge base ID at runtime. When Studio attaches all knowledge bases, expose a runtime selector or configuration list and pass the selected ID into the query endpoint. Do not embed the Studio playground query result or retrieved chunks as static project context.
 
 ## App Implementation Pattern
 

@@ -74,28 +74,13 @@ jobs:
           } elseif ($eventName -eq "workflow_dispatch") {
             "${{ inputs.version }}"
           } else {
-            $latestRelease = gh release list --repo "$env:GITHUB_REPOSITORY" --exclude-pre-releases --limit 1 --json tagName --jq ".[0].tagName"
-            if ($LASTEXITCODE -eq 0 -and $latestRelease) {
-              $latestRelease.TrimStart("v")
-            } else {
-              ((Get-Content -Raw -LiteralPath "packages/desktop/package.json" | ConvertFrom-Json).version -replace '[+-].*$', '')
-            }
+            ((Get-Content -Raw -LiteralPath "packages/desktop/package.json" | ConvertFrom-Json).version -replace '[+-].*$', '')
           }
           if ($requestedVersion -notmatch '^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?(?:[.-].*)?$') {
             throw "Version '$requestedVersion' must start with major.minor.patch"
           }
           $desktopVersion = "$($Matches[1]).$($Matches[2]).$($Matches[3])"
-          $revision = if ($Matches[4]) {
-            [int]$Matches[4]
-          } elseif ($eventName -eq "push") {
-            [int]$env:GITHUB_RUN_NUMBER % 65535
-          } else {
-            0
-          }
-          if ($revision -eq 0 -and $eventName -eq "push") {
-            $revision = 1
-          }
-          $msixVersion = "$desktopVersion.$revision"
+          $msixVersion = "$desktopVersion.0"
           "version=$desktopVersion" >> $env:GITHUB_OUTPUT
           "msix_version=$msixVersion" >> $env:GITHUB_OUTPUT
           Write-Host "Desktop version: $desktopVersion"

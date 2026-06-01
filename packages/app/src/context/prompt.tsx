@@ -6,7 +6,6 @@ import { createStore, type SetStoreFunction } from "solid-js/store"
 import type { AutopilotContextPayload } from "@/autopilot/helpers"
 import type { FileSelection } from "@/context/file"
 import type { InspirationContextPayload } from "@/inspiration/helpers"
-import type { PaddieKnowledgeBaseQueryResult } from "@/paddie-data/helpers"
 import type { TemplateFile } from "@/template/helpers"
 import { Persist, persisted } from "@/utils/persist"
 
@@ -124,12 +123,45 @@ export type KnowledgeBaseContextItem = {
   type: "knowledge-base"
   knowledgeBaseID: string
   knowledgeBaseName: string
-  mode: "query" | "api" | "document"
+  mode: "integration" | "all" | "api" | "document"
   label: string
   query?: string
-  answer?: string
   apiNote?: string
-  sources?: NonNullable<PaddieKnowledgeBaseQueryResult["results"]>
+  endpoint?: string
+  apiBase?: string
+  apiKeyEnv?: string
+  integrationNote?: string
+  knowledgeBases?: Array<{
+    id: string
+    name: string
+    documentCount?: number
+    chunkCount?: number
+  }>
+}
+
+export type DataPlaygroundContextItem = {
+  type: "data-playground"
+  label: string
+  apiBase: string
+  apiKeyEnv: string
+  mode: "router" | "manual"
+  userIDStrategy: string
+  selectedExplorerUserID?: string
+  routerMode?: "auto" | "conversation" | "store" | "retrieve"
+  strategy?: "auto" | "vector" | "hybrid" | "graph"
+  memoryType?: string
+  persona?: string
+  model?: string
+  sampleQuery?: string
+  conversationID?: string
+  integrationNote: string
+  knowledgeBases: Array<{
+    id: string
+    name: string
+    documentCount?: number
+    chunkCount?: number
+  }>
+  metadata?: Record<string, unknown>
 }
 
 export type InspirationContextItem = InspirationContextPayload & {
@@ -147,6 +179,7 @@ export type ContextItem =
   | WorkflowContextItem
   | MemoryContextItem
   | KnowledgeBaseContextItem
+  | DataPlaygroundContextItem
   | InspirationContextItem
   | AutopilotContextItem
 
@@ -206,6 +239,9 @@ function contextItemKey(item: ContextItem) {
   if (item.type === "autopilot") return `${item.type}:${item.runID}`
   if (item.type === "memory") return `${item.type}:${item.userID}:${item.mode}:${item.query ?? item.label}`
   if (item.type === "knowledge-base") return `${item.type}:${item.knowledgeBaseID}:${item.mode}:${item.query ?? item.label}`
+  if (item.type === "data-playground") {
+    return `${item.type}:${item.mode}:${item.routerMode ?? item.strategy ?? "default"}:${item.memoryType ?? "all"}:${item.knowledgeBases.map((kb) => kb.id).join(",")}:${item.sampleQuery ?? item.label}`
+  }
   if (item.type === "template") return `${item.type}:${item.templateID}:${item.partID ?? "full"}:${item.selector ?? "part"}`
   if (item.type === "workflow") return `${item.type}:${item.workflowID}:${item.language}`
   const start = item.selection?.startLine
