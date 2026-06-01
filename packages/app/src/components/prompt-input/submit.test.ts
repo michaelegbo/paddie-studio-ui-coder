@@ -540,15 +540,34 @@ describe("prompt submit worktree selection", () => {
         metadata: { selectedExplorerUserID: "user_1" },
       },
       {
-        key: "knowledge-base:kb_1:query:onboarding",
+        key: "knowledge-base:kb_1:integration:onboarding",
         type: "knowledge-base",
         knowledgeBaseID: "kb_1",
         knowledgeBaseName: "Onboarding",
-        mode: "query",
-        label: "Onboarding query",
+        mode: "integration",
+        label: "Knowledge Base integration",
         query: "How should onboarding work?",
-        answer: "Show a short checklist.",
-        sources: [{ document_id: "doc_1", document_name: "Guide.md", text: "Keep keys server-side." }],
+        endpoint: "https://api.paddie.io/api/knowledge-bases/kb_1/query",
+        apiBase: "https://api.paddie.io/api",
+        apiKeyEnv: "PADDIE_API_KEY",
+        integrationNote: "Query this KB through a trusted server route.",
+        knowledgeBases: [{ id: "kb_1", name: "Onboarding", documentCount: 1, chunkCount: 12 }],
+      },
+      {
+        key: "data-playground:router:conversation:preference:kb_1",
+        type: "data-playground",
+        label: "Paddie Data Playground",
+        apiBase: "https://api.paddie.io/api",
+        apiKeyEnv: "PADDIE_API_KEY",
+        mode: "router",
+        routerMode: "conversation",
+        memoryType: "preference",
+        selectedExplorerUserID: "user_1",
+        userIDStrategy: "Create or resolve a stable app-specific Paddie Memory user_id for each end user.",
+        sampleQuery: "How should onboarding work?",
+        conversationID: "conversation_1",
+        integrationNote: "Build runtime Memory/RAG services, not static answers.",
+        knowledgeBases: [{ id: "kb_1", name: "Onboarding", documentCount: 1, chunkCount: 12 }],
       },
     )
 
@@ -570,13 +589,14 @@ describe("prompt submit worktree selection", () => {
     })
 
     await submit.handleSubmit({ preventDefault: () => undefined } as unknown as Event)
-    for (let i = 0; i < 20 && contextAdds.length < 2; i++) {
+    for (let i = 0; i < 20 && contextAdds.length < 3; i++) {
       await new Promise((resolve) => setTimeout(resolve, 0))
     }
 
     expect(contextRemoves).toContain("memory:dynamic-user:integration:Paddie Memory service")
-    expect(contextRemoves).toContain("knowledge-base:kb_1:query:onboarding")
-    expect(contextAdds).toHaveLength(2)
+    expect(contextRemoves).toContain("knowledge-base:kb_1:integration:onboarding")
+    expect(contextRemoves).toContain("data-playground:router:conversation:preference:kb_1")
+    expect(contextAdds).toHaveLength(3)
     expect(contextAdds[0]).toMatchObject({
       type: "memory",
       userID: "<DYNAMIC_USER_ID>",
@@ -587,7 +607,19 @@ describe("prompt submit worktree selection", () => {
     expect(contextAdds[1]).toMatchObject({
       type: "knowledge-base",
       knowledgeBaseID: "kb_1",
+      mode: "integration",
       query: "How should onboarding work?",
+      apiKeyEnv: "PADDIE_API_KEY",
+      endpoint: "https://api.paddie.io/api/knowledge-bases/kb_1/query",
+    })
+    expect(contextAdds[2]).toMatchObject({
+      type: "data-playground",
+      label: "Paddie Data Playground",
+      mode: "router",
+      routerMode: "conversation",
+      memoryType: "preference",
+      apiKeyEnv: "PADDIE_API_KEY",
+      knowledgeBases: [{ id: "kb_1", name: "Onboarding", documentCount: 1, chunkCount: 12 }],
     })
   })
 

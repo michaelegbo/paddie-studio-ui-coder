@@ -95,18 +95,40 @@ describe("contextItemChip", () => {
   test("labels Paddie Knowledge Base references by KB name", () => {
     expect(
       contextItemChip({
-        key: "knowledge-base:kb_1:query:onboarding",
+        key: "knowledge-base:kb_1:integration:onboarding",
         type: "knowledge-base",
         knowledgeBaseID: "kb_1",
         knowledgeBaseName: "Onboarding",
-        mode: "query",
-        label: "Onboarding query",
-        query: "How should onboarding work?",
+        mode: "integration",
+        label: "Knowledge Base integration",
+        endpoint: "https://api.paddie.io/api/knowledge-bases/kb_1/query",
       }),
     ).toMatchObject({
       label: "Onboarding",
-      body: "How should onboarding work?",
+      body: "https://api.paddie.io/api/knowledge-bases/kb_1/query",
       icon: "layout-right-full",
+    })
+  })
+
+  test("labels Paddie Data Playground references by selected runtime scope", () => {
+    expect(
+      contextItemChip({
+        key: "data-playground:router:conversation:preference:kb_1",
+        type: "data-playground",
+        label: "Paddie Data Playground",
+        apiBase: "https://api.paddie.io/api",
+        apiKeyEnv: "PADDIE_API_KEY",
+        mode: "router",
+        routerMode: "conversation",
+        memoryType: "preference",
+        userIDStrategy: "Create a stable app-specific Paddie Memory user_id per end user.",
+        integrationNote: "Build runtime Memory/RAG services.",
+        knowledgeBases: [{ id: "kb_1", name: "Onboarding", documentCount: 1, chunkCount: 12 }],
+      }),
+    ).toMatchObject({
+      label: "Paddie Data Playground",
+      body: "router memory, 1 KB",
+      icon: "brain",
     })
   })
 })

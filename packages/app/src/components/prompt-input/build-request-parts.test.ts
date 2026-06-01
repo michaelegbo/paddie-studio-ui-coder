@@ -198,27 +198,23 @@ describe("buildRequestParts", () => {
     }
   })
 
-  test("adds Paddie Knowledge Base context with RAG sources and API safety guidance", () => {
+  test("adds Paddie Knowledge Base context as a runtime RAG integration", () => {
     const result = buildRequestParts({
       prompt: [{ type: "text", content: "add document search", start: 0, end: 19 }],
       context: [
         {
-          key: "knowledge-base:kb_1:query:onboarding",
+          key: "knowledge-base:kb_1:integration:onboarding",
           type: "knowledge-base",
           knowledgeBaseID: "kb_1",
           knowledgeBaseName: "Onboarding",
-          mode: "query",
-          label: "Onboarding query",
+          mode: "integration",
+          label: "Knowledge Base integration",
           query: "How should onboarding work?",
-          answer: "Show a short checklist and preserve provider setup.",
-          sources: [
-            {
-              document_id: "doc_1",
-              document_name: "Guide.md",
-              text: "Keep API keys on the server.",
-              score: 0.92,
-            },
-          ],
+          endpoint: "https://api.paddie.io/api/knowledge-bases/kb_1/query",
+          apiBase: "https://api.paddie.io/api",
+          apiKeyEnv: "PADDIE_API_KEY",
+          integrationNote: "Query this KB through a trusted server route.",
+          knowledgeBases: [{ id: "kb_1", name: "Onboarding", documentCount: 1, chunkCount: 12 }],
         },
       ],
       images: [],
@@ -233,11 +229,63 @@ describe("buildRequestParts", () => {
     if (synthetic?.type === "text") {
       expect(synthetic.text).toContain("Knowledge Base / AI RAG")
       expect(synthetic.text).toContain("paddie-data-integrator")
+      expect(synthetic.text).toContain("This is not a static query answer or source-chunk dump")
       expect(synthetic.text).toContain("Knowledge base: Onboarding (kb_1)")
-      expect(synthetic.text).toContain("Show a short checklist")
-      expect(synthetic.text).toContain("--- Guide.md score=0.920 ---")
+      expect(synthetic.text).toContain("Endpoint: https://api.paddie.io/api/knowledge-bases/kb_1/query")
+      expect(synthetic.text).toContain("API key environment variable: PADDIE_API_KEY")
+      expect(synthetic.text).toContain("Onboarding (kb_1) - 1 docs, 12 chunks")
       expect(synthetic.text).toContain("Keep API keys out of client bundles")
       expect(synthetic.text).toContain("preserve RMN plan gates")
+      expect(synthetic.text).not.toContain("Source chunks:")
+    }
+  })
+
+  test("adds Paddie Data Playground context as a dynamic integration contract", () => {
+    const result = buildRequestParts({
+      prompt: [{ type: "text", content: "build this playground into my app", start: 0, end: 33 }],
+      context: [
+        {
+          key: "data-playground:router:conversation:preference:kb_1",
+          type: "data-playground",
+          label: "Paddie Data Playground",
+          apiBase: "https://api.paddie.io/api",
+          apiKeyEnv: "PADDIE_API_KEY",
+          mode: "router",
+          routerMode: "conversation",
+          memoryType: "preference",
+          persona: "default",
+          model: "openai/gpt-4.1-mini",
+          selectedExplorerUserID: "user_1",
+          userIDStrategy: "Create or resolve a stable app-specific Paddie Memory user_id for each end user.",
+          sampleQuery: "How should onboarding work?",
+          conversationID: "conversation_1",
+          integrationNote: "Build Memory Router and Knowledge Base services, not static answers.",
+          knowledgeBases: [{ id: "kb_1", name: "Onboarding", documentCount: 1, chunkCount: 12 }],
+          metadata: { service: "paddie-data-playground" },
+        },
+      ],
+      images: [],
+      text: "build this playground into my app",
+      messageID: "msg_playground",
+      sessionID: "ses_playground",
+      sessionDirectory: "/repo",
+    })
+
+    const synthetic = result.requestParts.find((part) => part.type === "text" && part.synthetic)
+    expect(synthetic?.type).toBe("text")
+    if (synthetic?.type === "text") {
+      expect(synthetic.text).toContain("Paddie Data Playground")
+      expect(synthetic.text).toContain("paddie-data-integrator")
+      expect(synthetic.text).toContain("dynamic Memory/RAG implementation contract")
+      expect(synthetic.text).toContain("Memory mode: router")
+      expect(synthetic.text).toContain("Router mode default: conversation")
+      expect(synthetic.text).toContain("Memory type filter/hint: preference")
+      expect(synthetic.text).toContain("Onboarding (kb_1) - 1 docs, 12 chunks")
+      expect(synthetic.text).toContain("Sample runtime query: How should onboarding work?")
+      expect(synthetic.text).toContain("Do not embed the current playground transcript")
+      expect(synthetic.text).toContain("Keep Paddie API keys server-side")
+      expect(synthetic.text).not.toContain("Source chunks:")
+      expect(synthetic.text).not.toContain("Included memories:")
     }
   })
 

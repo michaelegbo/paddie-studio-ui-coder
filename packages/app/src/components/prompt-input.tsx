@@ -1091,9 +1091,35 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               mode: item.mode,
               label: item.label,
               query: item.query,
-              answer: item.answer,
               apiNote: item.apiNote,
-              sources: item.sources,
+              endpoint: item.endpoint,
+              apiBase: item.apiBase,
+              apiKeyEnv: item.apiKeyEnv,
+              integrationNote: item.integrationNote,
+              knowledgeBases: item.knowledgeBases,
+            })
+            continue
+          }
+
+          if (item.type === "data-playground") {
+            prompt.context.add({
+              type: "data-playground",
+              label: item.label,
+              apiBase: item.apiBase,
+              apiKeyEnv: item.apiKeyEnv,
+              mode: item.mode,
+              userIDStrategy: item.userIDStrategy,
+              selectedExplorerUserID: item.selectedExplorerUserID,
+              routerMode: item.routerMode,
+              strategy: item.strategy,
+              memoryType: item.memoryType,
+              persona: item.persona,
+              model: item.model,
+              sampleQuery: item.sampleQuery,
+              conversationID: item.conversationID,
+              integrationNote: item.integrationNote,
+              knowledgeBases: item.knowledgeBases,
+              metadata: item.metadata,
             })
             continue
           }

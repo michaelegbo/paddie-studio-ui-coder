@@ -59,7 +59,20 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                 <div class="flex max-w-[320px] flex-col gap-1">
                   <span class="truncate text-text-invert-base">{item.knowledgeBaseName}</span>
                   <span class="break-all text-text-invert-base/80">{item.knowledgeBaseID}</span>
+                  <Show when={item.endpoint}>{(value) => <span class="break-all text-text-invert-base/70">{value()}</span>}</Show>
+                  <Show when={item.mode === "all" && item.knowledgeBases?.length}>
+                    <span class="text-text-invert-base/70">{item.knowledgeBases?.length ?? 0} knowledge bases selected</span>
+                  </Show>
                   <Show when={item.query}>{(value) => <span class="break-all text-text-invert-base/70">{value()}</span>}</Show>
+                </div>
+              ) : item.type === "data-playground" ? (
+                <div class="flex max-w-[320px] flex-col gap-1">
+                  <span class="truncate text-text-invert-base">{item.label}</span>
+                  <span class="break-all text-text-invert-base/80">{item.apiBase}</span>
+                  <span class="text-text-invert-base/70">
+                    {item.mode} memory{item.memoryType ? ` - ${item.memoryType}` : ""} - {item.knowledgeBases.length} KBs
+                  </span>
+                  <Show when={item.sampleQuery}>{(value) => <span class="break-all text-text-invert-base/70">{value()}</span>}</Show>
                 </div>
               ) : item.type === "inspiration" ? (
                 <div class="flex max-w-[320px] flex-col gap-1">
@@ -105,6 +118,8 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                       <Icon name="brain" class="shrink-0 size-3.5 text-icon-info-base" />
                     ) : item.type === "knowledge-base" ? (
                       <Icon name="layout-right-full" class="shrink-0 size-3.5 text-icon-info-base" />
+                    ) : item.type === "data-playground" ? (
+                      <Icon name="brain" class="shrink-0 size-3.5 text-icon-info-base" />
                     ) : item.type === "inspiration" ? (
                       <Icon name="window-cursor" class="shrink-0 size-3.5 text-icon-info-base" />
                     ) : item.type === "autopilot" ? (

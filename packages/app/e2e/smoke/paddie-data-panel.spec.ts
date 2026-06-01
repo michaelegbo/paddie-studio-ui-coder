@@ -4,16 +4,29 @@ import { trackPageErrors } from "../utils/errors"
 test.describe("smoke: Paddie Data panel", () => {
   test.setTimeout(180_000)
 
-  test("loads Memory, Knowledge Base, and API data through mocked RMN endpoints", async ({ page }) => {
+  test("loads Playground, Memory, Knowledge Base, and API data through mocked RMN endpoints", async ({ page }) => {
     const errors = trackPageErrors(page)
     const calls: Array<{ method: string; path: string }> = []
+    const playgroundBodies: unknown[] = []
 
-    await mockPaddieApi(page, calls)
+    await mockPaddieApi(page, calls, playgroundBodies)
     await configureAuthenticatedStudio(page)
 
     await page.goto("/e2e/harness/paddie-data.html", { waitUntil: "domcontentloaded", timeout: 120_000 })
 
     await expect(page.getByText("Paddie Data")).toBeVisible()
+    await expect(page.getByText("Chat Playground")).toBeVisible()
+    await page.getByLabel("Memory type hint").selectOption("preference")
+    await page.locator("label").filter({ hasText: "Onboarding" }).locator('input[type="checkbox"]').check()
+    await page.getByPlaceholder("Paste full API key for playground").fill("paddie_live_test")
+    await page.getByPlaceholder("Ask Paddie Memory and AI RAG...").fill("How should onboarding work?")
+    await page.getByRole("button", { name: "Attach playground" }).click()
+    await expect(page.getByRole("button", { name: "Send" })).toBeEnabled()
+    await page.getByRole("button", { name: "Send" }).click()
+    await expect(page.getByText("Hello from playground.")).toBeVisible()
+    await expect(page.getByText("Retrieved useful memory.")).toBeVisible()
+
+    await page.getByRole("button", { name: "Memory", exact: true }).click()
     await expect(page.getByText("User prefers compact dashboards.")).toBeVisible()
     await expect(page.getByText("Explorer only")).toBeVisible()
     await expect(page.getByRole("button", { name: "Attach service" }).first()).toBeVisible()
@@ -27,7 +40,7 @@ test.describe("smoke: Paddie Data panel", () => {
     await page.getByRole("button", { name: "API", exact: true }).click()
     await expect(page.getByText("Studio key")).toBeVisible()
     await expect(page.getByText("Memory Router")).toBeVisible()
-    await expect(page.getByText("Knowledge Base Query")).toBeVisible()
+    await expect(page.getByText("Knowledge Base API")).toBeVisible()
 
     expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual(
       expect.arrayContaining([
@@ -36,9 +49,17 @@ test.describe("smoke: Paddie Data panel", () => {
         "GET /api/memories/users",
         "GET /api/knowledge-bases",
         "GET /api/users/me/api-keys",
+        "GET /api/playground/models",
+        "GET /api/playground/conversations",
+        "POST /api/playground/chat",
+        "POST /api/playground/conversations",
         "POST /api/knowledge-bases/kb_1/query",
       ]),
     )
+    expect(playgroundBodies[0]).toMatchObject({
+      memoryType: "preference",
+      knowledgeBaseIds: ["kb_1"],
+    })
     expect(errors).toEqual([])
   })
 })
@@ -68,7 +89,7 @@ async function configureAuthenticatedStudio(page: Page) {
   })
 }
 
-async function mockPaddieApi(page: Page, calls: Array<{ method: string; path: string }>) {
+async function mockPaddieApi(page: Page, calls: Array<{ method: string; path: string }>, playgroundBodies: unknown[]) {
   await page.route("https://api.paddie.io/api/**", async (route) => {
     const url = new URL(route.request().url())
     calls.push({ method: route.request().method(), path: url.pathname })
@@ -131,6 +152,30 @@ async function mockPaddieApi(page: Page, calls: Array<{ method: string; path: st
     }
     if (url.pathname === "/api/users/me/api-keys") {
       return json(route, { success: true, data: [{ id: "key_1", name: "Studio key", key_prefix: "paddie_live_123", usage_count: 3 }] })
+    }
+    if (url.pathname === "/api/playground/models") {
+      return json(route, { success: true, data: [{ id: "openai/gpt-4.1-mini", name: "GPT 4.1 mini", description: "Fast playground model" }] })
+    }
+    if (url.pathname === "/api/playground/conversations") {
+      if (route.request().method() === "POST") {
+        return json(route, { success: true, data: { id: "conversation_1" } })
+      }
+      return json(route, { success: true, data: [] })
+    }
+    if (url.pathname === "/api/playground/chat") {
+      playgroundBodies.push(route.request().postDataJSON())
+      return route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        headers: { "access-control-allow-origin": "*" },
+        body: [
+          'data: {"type":"router_action","action":"conversation","explanation":"Retrieved useful memory.","context_count":1,"storage_queued":true}\n\n',
+          'data: {"type":"memories","count":1,"memories":[{"id":"mem_1","memory":"User prefers compact dashboards.","type":"preference"}]}\n\n',
+          'data: {"type":"knowledge_bases","count":1,"knowledge_bases":[{"name":"Onboarding"}]}\n\n',
+          'data: {"type":"content","content":"Hello from playground."}\n\n',
+          'data: {"type":"done"}\n\n',
+        ].join(""),
+      })
     }
     if (url.pathname === "/api/studio/events") {
       return json(route, { success: true })

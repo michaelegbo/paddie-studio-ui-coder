@@ -37,8 +37,22 @@ export function contextItemChip(item: ContextItem & { key: string }) {
   if (item.type === "knowledge-base") {
     return {
       label: item.knowledgeBaseName,
-      body: item.query || item.label,
+      body:
+        item.mode === "all"
+          ? `${item.knowledgeBases?.length ?? 0} knowledge bases`
+          : item.endpoint || item.integrationNote || item.label,
       icon: "layout-right-full" as const,
+    }
+  }
+
+  if (item.type === "data-playground") {
+    return {
+      label: item.label,
+      body:
+        item.knowledgeBases.length > 0
+          ? `${item.mode} memory, ${item.knowledgeBases.length} KB${item.knowledgeBases.length === 1 ? "" : "s"}`
+          : `${item.mode} memory playground`,
+      icon: "brain" as const,
     }
   }
 

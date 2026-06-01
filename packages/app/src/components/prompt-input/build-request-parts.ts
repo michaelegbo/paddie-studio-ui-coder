@@ -5,6 +5,7 @@ import { encodeFilePath } from "@/context/file/path"
 import type {
   AgentPart,
   AutopilotContextItem,
+  DataPlaygroundContextItem,
   ElementContextItem,
   FileAttachmentPart,
   FileContextItem,
@@ -33,6 +34,7 @@ type BuildRequestPartsInput = {
     | WorkflowContextItem
     | MemoryContextItem
     | KnowledgeBaseContextItem
+    | DataPlaygroundContextItem
     | InspirationContextItem
     | AutopilotContextItem
   ))[]
@@ -79,6 +81,9 @@ const isMemoryContext = (
 const isKnowledgeBaseContext = (
   item: BuildRequestPartsInput["context"][number],
 ): item is { key: string } & KnowledgeBaseContextItem => item.type === "knowledge-base"
+const isDataPlaygroundContext = (
+  item: BuildRequestPartsInput["context"][number],
+): item is { key: string } & DataPlaygroundContextItem => item.type === "data-playground"
 const isInspirationContext = (
   item: BuildRequestPartsInput["context"][number],
 ): item is { key: string } & InspirationContextItem => item.type === "inspiration"
@@ -253,27 +258,75 @@ const formatMemoryNote = (item: MemoryContextItem) => {
 
 const formatKnowledgeBaseNote = (item: KnowledgeBaseContextItem) => {
   const lines = [
-    "The user attached Paddie Knowledge Base / AI RAG context for this implementation.",
+    "The user attached Paddie Knowledge Base / AI RAG as a service integration for this implementation.",
     paddieDataSkillInstruction(),
-    `Knowledge base: ${item.knowledgeBaseName} (${item.knowledgeBaseID})`,
+    "This is not a static query answer or source-chunk dump. Integrate the Knowledge Base/RAG service so the app can query the selected knowledge base scope dynamically at runtime.",
+    item.mode === "all"
+      ? `Knowledge base scope: all selected/available Paddie knowledge bases (${item.knowledgeBases?.length ?? "unknown"} configured)`
+      : `Knowledge base: ${item.knowledgeBaseName} (${item.knowledgeBaseID})`,
     `Reference mode: ${item.mode}`,
     `Label: ${item.label}`,
   ]
-  if (item.query?.trim()) lines.push(`Query: ${item.query.trim()}`)
-  if (item.answer?.trim()) lines.push(`Answer:\n${item.answer.trim()}`)
-  if (item.sources?.length) {
-    lines.push("Source chunks:")
+  if (item.apiBase) lines.push(`API base: ${item.apiBase}`)
+  if (item.endpoint) lines.push(`Endpoint: ${item.endpoint}`)
+  if (item.apiKeyEnv) lines.push(`API key environment variable: ${item.apiKeyEnv}`)
+  if (item.integrationNote?.trim()) lines.push(`Integration contract:\n${item.integrationNote.trim()}`)
+  if (item.knowledgeBases?.length) {
+    lines.push("Knowledge bases available for runtime queries:")
     lines.push(
-      ...item.sources.slice(0, 12).map((source, index) => {
-        const name = source.document_name || source.document_id || `chunk ${index + 1}`
-        const score = typeof source.score === "number" ? ` score=${source.score.toFixed(3)}` : ""
-        return `--- ${name}${score} ---\n${String(source.text || "").trim()}`
+      ...item.knowledgeBases.map((kb) => {
+        const docs = typeof kb.documentCount === "number" ? `${kb.documentCount} docs` : "unknown docs"
+        const chunks = typeof kb.chunkCount === "number" ? `${kb.chunkCount} chunks` : "unknown chunks"
+        return `- ${kb.name} (${kb.id}) - ${docs}, ${chunks}`
       }),
     )
   }
+  if (item.query?.trim()) lines.push(`Sample runtime query: ${item.query.trim()}`)
   if (item.apiNote?.trim()) lines.push(`API integration note:\n${item.apiNote.trim()}`)
   lines.push(
-    "Use this as explicit user-provided RAG context. Keep API keys out of client bundles, call Paddie/RMN from trusted server code where possible, and preserve RMN plan gates.",
+    "Keep API keys out of client bundles, call Paddie/RMN from trusted server code where possible, preserve RMN plan gates, and pass selected knowledge base IDs dynamically instead of embedding retrieved answers into the app.",
+  )
+  return lines.join("\n\n")
+}
+
+const formatDataPlaygroundNote = (item: DataPlaygroundContextItem) => {
+  const lines = [
+    "The user attached a Paddie Data Playground configuration as a dynamic Memory/RAG implementation contract.",
+    paddieDataSkillInstruction(),
+    "Use this to build runtime integration code for the user's app. Do not embed the current playground transcript, returned memories, RAG answers, source chunks, or API secrets as static content.",
+    `Label: ${item.label}`,
+    `API base: ${item.apiBase}`,
+    `API key environment variable: ${item.apiKeyEnv}`,
+    `Memory mode: ${item.mode}`,
+    `Dynamic user ID strategy: ${item.userIDStrategy}`,
+  ]
+  if (item.routerMode) lines.push(`Router mode default: ${item.routerMode}`)
+  if (item.strategy) lines.push(`Manual memory search strategy default: ${item.strategy}`)
+  if (item.memoryType) lines.push(`Memory type filter/hint: ${item.memoryType}`)
+  if (item.persona) lines.push(`Playground persona default: ${item.persona}`)
+  if (item.model) lines.push(`Playground model used for testing: ${item.model}`)
+  if (item.conversationID) lines.push(`Playground conversation ID, for testing only: ${item.conversationID}`)
+  if (item.selectedExplorerUserID) {
+    lines.push(`Selected explorer user ID, for testing only: ${item.selectedExplorerUserID}`)
+  }
+  if (item.sampleQuery?.trim()) lines.push(`Sample runtime query: ${item.sampleQuery.trim()}`)
+  if (item.knowledgeBases.length) {
+    lines.push("Selected knowledge bases for runtime RAG:")
+    lines.push(
+      ...item.knowledgeBases.map((kb) => {
+        const docs = typeof kb.documentCount === "number" ? `${kb.documentCount} docs` : "unknown docs"
+        const chunks = typeof kb.chunkCount === "number" ? `${kb.chunkCount} chunks` : "unknown chunks"
+        return `- ${kb.name} (${kb.id}) - ${docs}, ${chunks}`
+      }),
+    )
+  } else {
+    lines.push("Selected knowledge bases for runtime RAG: none selected; load available knowledge bases at runtime or expose a selector when the app needs RAG.")
+  }
+  lines.push(`Integration contract:\n${item.integrationNote.trim()}`)
+  const metadata = formatJsonSummary(item.metadata)
+  if (metadata) lines.push(`Metadata summary:\n${metadata}`)
+  lines.push(
+    "Implement reusable app code such as server routes, services, hooks, or clients for Memory Router and Knowledge Base queries. Keep Paddie API keys server-side, pass dynamic app-user IDs into Memory Router, preserve RMN plan gates, and make knowledge-base selection configurable at runtime.",
   )
   return lines.join("\n\n")
 }
@@ -492,6 +545,17 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
           id: Identifier.ascending("part"),
           type: "text",
           text: formatKnowledgeBaseNote(item),
+          synthetic: true,
+        } satisfies PromptRequestPart,
+      ]
+    }
+
+    if (isDataPlaygroundContext(item)) {
+      return [
+        {
+          id: Identifier.ascending("part"),
+          type: "text",
+          text: formatDataPlaygroundNote(item),
           synthetic: true,
         } satisfies PromptRequestPart,
       ]
