@@ -204,7 +204,7 @@ jobs:
             --appId "$env:MICROSOFT_STORE_PRODUCT_ID"
 
       - uses: actions/upload-artifact@v4
-        if: ${{ success() && steps.package.outputs.msix != '' }}
+        if: ${{ always() && steps.package.outputs.msix != '' }}
         with:
           name: paddie-store-msix-${{ steps.version.outputs.version }}
           path: ${{ steps.package.outputs.msix }}
