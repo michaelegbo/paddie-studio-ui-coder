@@ -85,10 +85,43 @@ export type UITemplate = {
   display_order: number
 }
 
+export type TemplateVisualViewport = {
+  name: "desktop" | "tablet" | "mobile"
+  width: number
+  height: number
+}
+
+export type TemplateVisualStyleSignals = {
+  colors: string[]
+  typography: string[]
+  layout: string[]
+  motion: string[]
+  landmarks: string[]
+  text: string[]
+}
+
+export type TemplateVisualContract = {
+  templateID: string
+  templateName: string
+  description: string
+  stack: string
+  partID?: string
+  partName?: string
+  selector?: string
+  label?: string
+  reference: {
+    kind: "url" | "html"
+    value: string
+  }
+  viewports: TemplateVisualViewport[]
+  styleSignals: TemplateVisualStyleSignals
+  acceptanceNotes: string[]
+}
+
 export const part = (tpl: UITemplate, id?: string) => tpl.parts.find((item) => item.id === (id || "full"))
 
 export const templateCanAccess = (tpl: Pick<UITemplateMeta, "can_access" | "tier">) =>
-  typeof tpl.can_access === "boolean" ? tpl.can_access : tpl.tier === "free"
+  tpl.can_access === true
 
 /** Templates imported as full Vite + React trees (API may tag with `paddie:react-package`). */
 export const templateIsReactProject = (tpl: UITemplate) =>
@@ -104,9 +137,147 @@ export function templateGalleryPreviewReady(preview: string | undefined): boolea
   return true
 }
 
+export const TEMPLATE_VISUAL_VIEWPORTS: TemplateVisualViewport[] = [
+  { name: "desktop", width: 1440, height: 900 },
+  { name: "tablet", width: 768, height: 1024 },
+  { name: "mobile", width: 390, height: 844 },
+]
+
 export const TEMPLATE_PREVIEW_SANDBOX = "allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
 
 const url = (value: string) => /^https?:\/\//i.test(value)
+
+const unique = (values: string[], limit: number) =>
+  values
+    .map((value) => value.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .filter((value, index, list) => list.findIndex((item) => item.toLowerCase() === value.toLowerCase()) === index)
+    .slice(0, limit)
+
+const visibleText = (html: string) =>
+  unique(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, "\n")
+      .split(/\n+/)
+      .map((value) => value.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").trim())
+      .filter((value) => value.length >= 3),
+    12,
+  )
+
+const cssSignals = (source: string, names: string[], limit: number) =>
+  unique(
+    names.flatMap((name) =>
+      Array.from(source.matchAll(new RegExp(`${name}\\s*:\\s*([^;{}]+)`, "gi"))).map((match) => `${name}: ${match[1] ?? ""}`),
+    ),
+    limit,
+  )
+
+const colorSignals = (source: string) =>
+  unique(
+    Array.from(source.matchAll(/#[0-9a-f]{3,8}\b|rgba?\([^)]+\)|hsla?\([^)]+\)|\b(?:red|blue|green|yellow|orange|purple|pink|black|white|gray|grey|slate|zinc|neutral)\b/gi)).map(
+      (match) => match[0],
+    ),
+    16,
+  )
+
+const landmarkSignals = (html: string, part?: TemplatePart, selector?: string, label?: string) =>
+  unique(
+    [
+      ...(part?.selectors ?? []),
+      selector ?? "",
+      label ?? "",
+      ...Array.from(html.matchAll(/<(header|nav|main|section|article|aside|footer|form|button|input|textarea|select|table|canvas|video|img)\b/gi)).map(
+        (match) => match[1] ?? "",
+      ),
+    ],
+    18,
+  )
+
+export const createTemplateVisualContract = (
+  tpl: UITemplate,
+  item?: TemplatePart,
+  selection?: {
+    selector?: string
+    label?: string
+    html?: string
+    text?: string
+  },
+): TemplateVisualContract => {
+  const link = previewUrl(tpl)
+  const html = selection?.html?.trim() || previewHtml(tpl)
+  const reference = link
+    ? { kind: "url" as const, value: link }
+    : { kind: "html" as const, value: html.slice(0, 12_000) || "<body></body>" }
+  const source = [
+    previewHtml(tpl),
+    html,
+    ...filesFor(tpl, item)
+      .filter((file) => file.encoding !== "base64")
+      .map((file) => file.content.slice(0, 8_000)),
+  ].join("\n")
+  const text = unique([selection?.text ?? "", ...visibleText(html)], 14)
+
+  return {
+    templateID: tpl.id,
+    templateName: tpl.name,
+    description: item?.id && item.id !== "full" ? item.description : tpl.description,
+    stack: tpl.stack,
+    partID: item?.id,
+    partName: item?.name,
+    selector: selection?.selector,
+    label: selection?.label,
+    reference,
+    viewports: TEMPLATE_VISUAL_VIEWPORTS.map((viewport) => ({ ...viewport })),
+    styleSignals: {
+      colors: colorSignals(source),
+      typography: cssSignals(source, ["font-family", "font-size", "font-weight", "line-height", "letter-spacing"], 12),
+      layout: cssSignals(
+        source,
+        ["display", "position", "grid-template-columns", "flex-direction", "justify-content", "align-items", "gap", "width", "max-width", "min-height", "padding", "margin"],
+        18,
+      ),
+      motion: unique(
+        [
+          ...cssSignals(source, ["transition", "transition-duration", "animation", "animation-name", "animation-duration"], 12),
+          ...Array.from(source.matchAll(/@keyframes\s+([^{\s]+)/gi)).map((match) => `@keyframes ${match[1] ?? ""}`),
+        ],
+        16,
+      ),
+      landmarks: landmarkSignals(html, item, selection?.selector, selection?.label),
+      text,
+    },
+    acceptanceNotes: [
+      "Compare the adapted result against the template's design intent, not pixel-perfect cloning.",
+      "Preserve the visible layout hierarchy, component density, spacing rhythm, color palette, typography, and motion intent while fitting the target app.",
+      "Treat missing preview, blank pages, runtime/console errors, missing key landmarks, or obviously unrelated visual structure as failures.",
+      "Do not copy private assets, logos, trademarks, or branding verbatim.",
+    ],
+  }
+}
+
+export const formatTemplateVisualContract = (contract: TemplateVisualContract) =>
+  [
+    "Template visual verification contract:",
+    `Template: ${contract.templateName} (${contract.templateID})`,
+    contract.partName ? `Selected part: ${contract.partName}${contract.partID ? ` (${contract.partID})` : ""}` : "",
+    contract.label ? `Selected element: ${contract.label}` : "",
+    contract.selector ? `Selector: ${contract.selector}` : "",
+    `Reference ${contract.reference.kind}: ${contract.reference.kind === "url" ? contract.reference.value : "[inline template preview HTML attached]"}`,
+    `Viewports: ${contract.viewports.map((viewport) => `${viewport.name} ${viewport.width}x${viewport.height}`).join(", ")}`,
+    contract.styleSignals.text.length ? `Expected visible text: ${contract.styleSignals.text.join(" | ")}` : "",
+    contract.styleSignals.landmarks.length ? `Expected landmarks/selectors: ${contract.styleSignals.landmarks.join(" | ")}` : "",
+    contract.styleSignals.colors.length ? `Color signals: ${contract.styleSignals.colors.join(" | ")}` : "",
+    contract.styleSignals.typography.length ? `Typography signals: ${contract.styleSignals.typography.join(" | ")}` : "",
+    contract.styleSignals.layout.length ? `Layout signals: ${contract.styleSignals.layout.join(" | ")}` : "",
+    contract.styleSignals.motion.length ? `Motion signals: ${contract.styleSignals.motion.join(" | ")}` : "",
+    "Acceptance:",
+    ...contract.acceptanceNotes.map((note) => `- ${note}`),
+    contract.reference.kind === "html" ? `Reference HTML:\n${contract.reference.value}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
 
 const esc = (value: string) =>
   value
