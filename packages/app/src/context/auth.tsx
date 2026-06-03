@@ -12,6 +12,14 @@ export type AuthUser = {
 export type AuthSubscription = {
   plan_slug: string
   status: string
+  access_allowed?: boolean
+  billing_required?: boolean
+  trial_required?: boolean
+  trial_expired?: boolean
+  trial_ends_at?: string | null
+  trial_days_remaining?: number | null
+  message?: string
+  upgrade_url?: string
 }
 
 export type AuthState = {
@@ -21,6 +29,7 @@ export type AuthState = {
   isAuthenticated: () => boolean
   isLoading: () => boolean
   login: (email: string, password: string) => Promise<boolean>
+  refresh: () => Promise<void>
   logout: () => void
 }
 
@@ -81,17 +90,38 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
             setSubscription({
               plan_slug: subRes.data.plan.slug,
               status: subRes.data.subscription?.status ?? "active",
+              access_allowed: subRes.data.access_allowed,
+              billing_required: subRes.data.billing_required,
+              trial_required: subRes.data.trial_required,
+              trial_expired: subRes.data.trial_expired,
+              trial_ends_at: subRes.data.trial_ends_at,
+              trial_days_remaining: subRes.data.trial_days_remaining,
+              message: subRes.data.blocker?.message,
+              upgrade_url: subRes.data.blocker?.upgrade_url,
             })
           } else {
-            setSubscription({ plan_slug: "free", status: "none" })
+            setSubscription({
+              plan_slug: "trial",
+              status: subRes.data.blocker?.code ?? "subscription_required",
+              access_allowed: false,
+              billing_required: subRes.data.billing_required ?? true,
+              trial_required: subRes.data.trial_required ?? true,
+              trial_expired: subRes.data.trial_expired,
+              trial_ends_at: subRes.data.trial_ends_at,
+              trial_days_remaining: subRes.data.trial_days_remaining,
+              message: subRes.data.blocker?.message,
+              upgrade_url: subRes.data.blocker?.upgrade_url,
+            })
           }
         } else {
-          setSubscription({ plan_slug: "free", status: "none" })
+          setSubscription({ plan_slug: "unknown", status: "unavailable", access_allowed: false })
         }
       } catch (err) {
         if (err instanceof Error && err.message === "unauthorized") {
           logout()
+          return
         }
+        setSubscription({ plan_slug: "unknown", status: "unavailable", access_allowed: false })
       } finally {
         setIsLoading(false)
       }
@@ -164,6 +194,11 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
       }
     }
 
+    const refresh = async () => {
+      const stored = token()
+      if (stored) await hydrate(stored)
+    }
+
     const logout = () => {
       localStorage.removeItem(TOKEN_KEY)
       localStorage.removeItem(RMN_TOKEN_KEY)
@@ -196,6 +231,12 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
                 setToken(jwt)
                 trackPaddieStudioEvent("login_deeplink_succeeded", { status: "success" })
                 void hydrate(jwt)
+                continue
+              }
+              const stored = token()
+              if (stored) {
+                localStorage.setItem(RMN_TOKEN_KEY, stored)
+                void hydrate(stored)
               }
             }
           } catch {
@@ -222,6 +263,7 @@ export const { use: useAuth, provider: AuthProvider } = createSimpleContext({
       isAuthenticated: () => !!token(),
       isLoading,
       login,
+      refresh,
       logout,
     } satisfies AuthState
   },

@@ -152,6 +152,8 @@ jobs:
 
       - name: Build sidecar CLI
         shell: pwsh
+        env:
+          OPENCODE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           bun ./packages/opencode/script/build.ts --single --baseline
           New-Item -ItemType Directory -Force -Path packages/desktop/src-tauri/sidecars | Out-Null
