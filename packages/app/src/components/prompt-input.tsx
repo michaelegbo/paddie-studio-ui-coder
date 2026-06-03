@@ -99,6 +99,14 @@ const EXAMPLES = [
   "prompt.example.25",
 ] as const
 
+type PromptShellRequest = {
+  action?: "run" | "stop"
+  command?: string
+  submit?: boolean
+}
+
+const PROMPT_SHELL_EVENT = "paddie:prompt-shell"
+
 const NON_EMPTY_TEXT = /[^\s\u200B]/
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
@@ -1027,6 +1035,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               html: item.html,
               text: item.text,
               files: item.files,
+              visualContract: item.visualContract,
             })
             continue
           }
@@ -1078,6 +1087,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               apiBase: item.apiBase,
               apiKeyEnv: item.apiKeyEnv,
               userIDStrategy: item.userIDStrategy,
+              llm: item.llm,
               metadata: item.metadata,
             })
             continue
@@ -1096,6 +1106,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               apiBase: item.apiBase,
               apiKeyEnv: item.apiKeyEnv,
               integrationNote: item.integrationNote,
+              llm: item.llm,
               knowledgeBases: item.knowledgeBases,
             })
             continue
@@ -1118,6 +1129,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               sampleQuery: item.sampleQuery,
               conversationID: item.conversationID,
               integrationNote: item.integrationNote,
+              implementationCode: item.implementationCode,
+              memoryService: item.memoryService,
+              knowledgeBaseMode: item.knowledgeBaseMode,
+              llm: item.llm,
               knowledgeBases: item.knowledgeBases,
               metadata: item.metadata,
             })
@@ -1139,6 +1154,27 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               plan: item.plan,
               events: item.events,
               safeguards: item.safeguards,
+            })
+            continue
+          }
+
+          if (item.type === "penpot-design") {
+            prompt.context.add({
+              type: "penpot-design",
+              instanceUrl: item.instanceUrl,
+              fileId: item.fileId,
+              fileName: item.fileName,
+              pageId: item.pageId,
+              pageName: item.pageName,
+              frameIds: item.frameIds,
+              frameNames: item.frameNames,
+              mode: item.mode,
+              mcpName: item.mcpName,
+              styleSignals: item.styleSignals,
+              assets: item.assets,
+              tokens: item.tokens,
+              writebackAllowed: item.writebackAllowed,
+              summary: item.summary,
             })
             continue
           }
@@ -1227,6 +1263,33 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     onQueue: props.onQueue,
     onAbort: props.onAbort,
     onSubmit: props.onSubmit,
+  })
+
+  createEffect(() => {
+    const onShellRequest = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return
+      const detail = event.detail as PromptShellRequest | undefined
+      if (!detail) return
+
+      if (detail.action === "stop") {
+        if (working()) void abort()
+        return
+      }
+
+      const command = detail.command?.trim()
+      if (!command) return
+      setStore("mode", "shell")
+      setStore("popover", null)
+      prompt.set([{ type: "text", content: command, start: 0, end: command.length }], command.length)
+      requestAnimationFrame(() => {
+        setEditorText(command)
+        focusEditorEnd()
+        if (detail.submit) void handleSubmit(new Event("submit"))
+      })
+    }
+
+    window.addEventListener(PROMPT_SHELL_EVENT, onShellRequest)
+    onCleanup(() => window.removeEventListener(PROMPT_SHELL_EVENT, onShellRequest))
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {

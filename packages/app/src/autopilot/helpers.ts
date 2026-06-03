@@ -1,4 +1,11 @@
 import { dataGoalNeedsPaddieSkill, paddieDataSkillInstruction } from "@/paddie-data/helpers"
+import {
+  formatPenpotDesignNote,
+  penpotGoalNeedsDesign,
+  penpotMcpRuntimeInstruction,
+  type PenpotDesignContextPayload,
+} from "@/penpot/helpers"
+import { formatTemplateVisualContract, type TemplateVisualContract } from "@/template/helpers"
 
 export type AutopilotRunStatus = "running" | "paused" | "stopped" | "completed"
 
@@ -24,7 +31,7 @@ export type AutopilotPlanStep = {
 
 export type AutopilotEvent = {
   id: string
-  source: "user" | "autopilot" | "opencode" | "paddie" | "template" | "workflow" | "browser" | "system"
+  source: "user" | "autopilot" | "opencode" | "paddie" | "template" | "workflow" | "penpot" | "browser" | "system"
   title: string
   body: string
   detail?: string
@@ -53,6 +60,18 @@ export type AutopilotTemplateContext = AutopilotTemplateSummary & {
     content: string
     encoding?: "base64"
   }>
+  visualContract?: TemplateVisualContract
+}
+
+export type TemplateVisualReportStatus = "pass" | "fail" | "blocked"
+
+export type TemplateVisualReport = {
+  status: TemplateVisualReportStatus
+  body: string
+  viewports: string[]
+  findings: string[]
+  screenshots: string[]
+  preview?: string
 }
 
 export type AutopilotWorkflowSummary = {
@@ -94,6 +113,10 @@ export type AutopilotResourceInput = {
   workflowAccess?: "available" | "logged-out" | "unavailable"
   workflowError?: string
   selectedWorkflow?: AutopilotWorkflowContext
+  penpotAccess?: "attached" | "available" | "unavailable"
+  penpotError?: string
+  penpotDesigns?: PenpotDesignContextPayload[]
+  selectedPenpot?: PenpotDesignContextPayload
   plannerOutput?: string
 }
 
@@ -644,6 +667,9 @@ export function nativePlannerPrompt(run: AutopilotContextPayload, input?: Autopi
     "If you choose a Paddie template, include exactly: PADDIE_TEMPLATE_ID: <id> and PADDIE_TEMPLATE_NAME: <name>.",
     "If you choose a Paddie workflow, include exactly: PADDIE_WORKFLOW_ID: <id> and PADDIE_WORKFLOW_NAME: <name>.",
     autopilotGoalNeedsData(run.goal) ? paddieDataSkillInstruction() : "",
+    autopilotGoalNeedsPenpot(run.goal) || input?.selectedPenpot
+      ? "If this run uses Penpot, identify the selected frame(s), the intended output, and whether writeback is requested. Do not plan Penpot writes unless writeback is explicitly allowed."
+      : "",
     "",
     resourceCatalog(input),
   ]
@@ -665,7 +691,11 @@ export function nativeWorkerPrompt(run: AutopilotContextPayload, input?: Autopil
     "- Use the existing opencode file, edit, shell, task/subagent, permission, and status systems.",
     "- Inspect the existing project before changing it; support blank projects and existing connected projects.",
     "- Select and adapt Paddie templates/workflows when useful or requested.",
+    input?.selectedTemplate?.visualContract
+      ? "- Because a Paddie template visual contract is attached, do not consider the UI done until Preview + visual match verification passes or is clearly blocked."
+      : "",
     autopilotGoalNeedsData(run.goal) ? `- ${paddieDataSkillInstruction()}` : "",
+    autopilotGoalNeedsPenpot(run.goal) || input?.selectedPenpot ? `- ${penpotMcpRuntimeInstruction()}` : "",
     "- Run available install, test, typecheck, build, and lint commands when appropriate.",
     "- Detect or start a local preview when relevant, inspect browser/runtime errors when possible, and fix failures.",
     "- Ask before destructive file actions, git push/release/deploy, credential use, payments, external messages, or publishing.",
@@ -681,7 +711,7 @@ export function nativeWorkerPrompt(run: AutopilotContextPayload, input?: Autopil
     .join("\n")
 }
 
-export function nativeVerificationPrompt(run: AutopilotContextPayload) {
+export function nativeVerificationPrompt(run: AutopilotContextPayload, input?: AutopilotResourceInput) {
   return [
     "PADDIE_AUTOPILOT_PHASE: verifying",
     "",
@@ -691,6 +721,7 @@ export function nativeVerificationPrompt(run: AutopilotContextPayload) {
     "",
     "Run the checks that fit this workspace: dependency install if needed, tests, typecheck, lint, build, static syntax checks, and a local preview/browser sanity check for UI work.",
     "If a check fails, fix the issue and rerun the focused check. Keep iterating until checks pass, the task is blocked by an approval boundary, or no reasonable automated check exists.",
+    templateVisualVerificationInstructions(input?.selectedTemplate?.visualContract),
     "",
     "When done, emit PADDIE_AUTOPILOT_PHASE: summarizing and summarize changed files, commands run, verification results, preview URL or screenshot notes if available, artifacts, and remaining risks.",
     "End with a handoff block that Autopilot can show to the user:",
@@ -703,8 +734,122 @@ export function nativeVerificationPrompt(run: AutopilotContextPayload) {
   ].join("\n")
 }
 
+export function nativeTemplateVisualVerificationPrompt(
+  run: AutopilotContextPayload,
+  contract: TemplateVisualContract,
+) {
+  return [
+    "PADDIE_AUTOPILOT_PHASE: previewing",
+    "",
+    "Run the required Paddie template visual verification now.",
+    "",
+    runHeader(run),
+    "",
+    templateVisualVerificationInstructions(contract),
+    "",
+    "Do not make design changes in this pass unless the page cannot be loaded without a small obvious fix. Produce the report block at the end.",
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
+export function nativeTemplateVisualFixPrompt(
+  run: AutopilotContextPayload,
+  contract: TemplateVisualContract,
+  report: TemplateVisualReport,
+  attempt: number,
+) {
+  return [
+    "PADDIE_AUTOPILOT_PHASE: executing",
+    "",
+    `Fix the template visual verification failures from attempt ${attempt}.`,
+    "",
+    runHeader(run),
+    "",
+    formatTemplateVisualContract(contract),
+    "",
+    "Visual report to fix:",
+    report.body,
+    "",
+    "Make focused UI changes only. Preserve the current app's intended functionality, then rerun the same visual verification and emit a fresh PADDIE_TEMPLATE_VISUAL_REPORT block.",
+  ].join("\n")
+}
+
+function templateVisualVerificationInstructions(contract: TemplateVisualContract | undefined) {
+  if (!contract) return ""
+  return [
+    "Required Paddie template visual verification:",
+    formatTemplateVisualContract(contract),
+    "",
+    "Use Playwright or an equivalent browser automation path available through this opencode worker session.",
+    "Render the template reference and the current app preview at every listed viewport. Capture screenshots or screenshot notes, inspect console/page errors, detect blank pages, and compare DOM landmarks, visible text, spacing, typography, color, layout hierarchy, component structure, responsiveness, and visible CSS motion.",
+    "This is not a pixel-perfect clone check. Pass only when the output clearly adapts the template's design intent to the current app.",
+    "Hard fail or block if there is no preview URL, the app is blank, the page has major console/runtime errors, key template landmarks/text are missing, or the result is visually unrelated to the template.",
+    "Emit exactly this report block before the final handoff:",
+    "PADDIE_TEMPLATE_VISUAL_REPORT:",
+    "Status: pass|fail|blocked",
+    "Viewports: <desktop/tablet/mobile checked>",
+    "Preview: <preview URL or not available>",
+    "Findings:",
+    "- <specific visual match/mismatch or blocker>",
+    "Screenshots:",
+    "- <paths or screenshot notes>",
+    "PADDIE_TEMPLATE_VISUAL_REPORT_END",
+  ].join("\n")
+}
+
 export function autopilotWorkerPrompt(run: AutopilotContextPayload) {
   return nativeWorkerPrompt(run)
+}
+
+export function templateVisualReportFromText(value: string): TemplateVisualReport | undefined {
+  const block = value.match(/PADDIE_TEMPLATE_VISUAL_REPORT:\s*([\s\S]*?)(?:\n\s*PADDIE_TEMPLATE_VISUAL_REPORT_END\b|$)/i)?.[1]?.trim()
+  if (!block) return
+  const status = block.match(/^Status:\s*(pass|fail|blocked)\b/im)?.[1]?.toLowerCase()
+  if (status !== "pass" && status !== "fail" && status !== "blocked") return
+  return {
+    status,
+    body: block,
+    viewports: listField(block, "Viewports"),
+    findings: listField(block, "Findings"),
+    screenshots: listField(block, "Screenshots"),
+    preview: block.match(/^Preview:\s*(.+)$/im)?.[1]?.trim(),
+  }
+}
+
+export function templateVisualReportNeedsFix(report: TemplateVisualReport) {
+  const body = report.body.toLowerCase()
+  if (report.status !== "pass") return true
+  return /\b(no preview|missing preview|blank page|console error|page error|runtime error|missing key|missing landmark|not found|failed)\b/i.test(body)
+}
+
+export function templateVisualReportEventBody(report: TemplateVisualReport) {
+  return [
+    `Status: ${report.status}`,
+    report.preview ? `Preview: ${report.preview}` : "",
+    report.viewports.length ? `Viewports: ${report.viewports.join(", ")}` : "",
+    report.findings.length ? `Findings:\n${report.findings.map((item) => `- ${item}`).join("\n")}` : report.body,
+    report.screenshots.length ? `Screenshots:\n${report.screenshots.map((item) => `- ${item}`).join("\n")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n")
+}
+
+function listField(block: string, label: string) {
+  const lines = block.split(/\r?\n/)
+  const index = lines.findIndex((line) => new RegExp(`^${label}:`, "i").test(line.trim()))
+  if (index === -1) return []
+  const inline = lines[index]?.replace(new RegExp(`^${label}:\\s*`, "i"), "") ?? ""
+  const section = [inline]
+  for (const line of lines.slice(index + 1)) {
+    if (/^[A-Z][A-Za-z ]+:/.test(line.trim())) break
+    section.push(line)
+  }
+  return section
+    .join("\n")
+    .split(/\n|,/)
+    .map((item) => item.replace(/^[-*]\s*/, "").trim())
+    .filter(Boolean)
 }
 
 export function autopilotGoalNeedsTemplate(goal: string) {
@@ -822,6 +967,10 @@ export function autopilotGoalNeedsData(goal: string) {
   return dataGoalNeedsPaddieSkill(goal)
 }
 
+export function autopilotGoalNeedsPenpot(goal: string) {
+  return penpotGoalNeedsDesign(goal)
+}
+
 export function selectedTemplateFromText(value: string) {
   const id = value.match(/PADDIE_TEMPLATE_ID:\s*([^\s]+)/i)?.[1]
   const name = value.match(/PADDIE_TEMPLATE_NAME:\s*(.+)/i)?.[1]?.trim()
@@ -919,7 +1068,7 @@ export function autopilotPhaseStatuses(phase: AutopilotPhase): Partial<Record<Au
 }
 
 export function classifyAutopilotApproval(value: string) {
-  if (/\b(git\s+push|release|publish|deploy|payment|charge|credential|secret|api key|delete\s+-rf|remove-item\s+-recurse)\b/i.test(value)) {
+  if (/\b(git\s+push|release|publish|deploy|payment|charge|credential|secret|api key|delete\s+-rf|remove-item\s+-recurse|penpot\s+(write|update|delete|create)|writeback)\b/i.test(value)) {
     return "approval-required"
   }
   return "safe"
@@ -1048,6 +1197,7 @@ function resourceCatalog(input?: AutopilotResourceInput) {
   return [
     templateCatalog(input),
     workflowCatalog(input),
+    penpotCatalog(input),
   ]
     .filter(Boolean)
     .join("\n\n")
@@ -1059,6 +1209,8 @@ function resourceContext(input?: AutopilotResourceInput) {
     selectedTemplateContext(input?.selectedTemplate),
     workflowCatalog(input),
     selectedWorkflowContext(input?.selectedWorkflow),
+    penpotCatalog(input),
+    selectedPenpotContext(input?.selectedPenpot),
   ]
     .filter(Boolean)
     .join("\n\n")
@@ -1097,6 +1249,7 @@ function selectedTemplateContext(template: AutopilotTemplateContext | undefined)
     template.description ? `Description: ${template.description}` : "",
     template.stack ? `Stack: ${template.stack}` : "",
     "Adapt the layout, hierarchy, spacing, colors, typography, and motion intent. Do not copy private assets, logos, or branding verbatim.",
+    template.visualContract ? formatTemplateVisualContract(template.visualContract) : "",
     files,
   ]
     .filter(Boolean)
@@ -1140,6 +1293,33 @@ function selectedWorkflowContext(workflow: AutopilotWorkflowContext | undefined)
   ]
     .filter(Boolean)
     .join("\n\n")
+}
+
+function penpotCatalog(input?: AutopilotResourceInput) {
+  if (input?.penpotAccess === "unavailable") {
+    return `Penpot MCP/design context: unavailable${input.penpotError ? ` (${input.penpotError})` : ""}.`
+  }
+  const designs = input?.penpotDesigns ?? []
+  if (!designs.length) return ""
+  return [
+    "Attached Penpot design context:",
+    ...designs.map((item) =>
+      [
+        `- instance: ${item.instanceUrl}`,
+        `  mcp: ${item.mcpName}`,
+        `  file: ${item.fileName ? `${item.fileName} (${item.fileId})` : item.fileId}`,
+        `  page: ${item.pageName ? `${item.pageName} (${item.pageId})` : item.pageId}`,
+        `  mode: ${item.mode}`,
+        `  frames: ${item.frameNames.length ? item.frameNames.join(", ") : item.frameIds.join(", ") || "active"}`,
+        `  writebackAllowed: ${item.writebackAllowed ? "true" : "false"}`,
+      ].join("\n"),
+    ),
+  ].join("\n")
+}
+
+function selectedPenpotContext(item: PenpotDesignContextPayload | undefined) {
+  if (!item) return ""
+  return formatPenpotDesignNote(item)
 }
 
 function trimFiles(files: AutopilotTemplateContext["files"]) {

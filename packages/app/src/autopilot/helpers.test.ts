@@ -3,6 +3,7 @@ import {
   addAutopilotEvent,
   autopilotContextFromRun,
   autopilotGoalNeedsData,
+  autopilotGoalNeedsPenpot,
   autopilotGoalNeedsTemplate,
   autopilotGoalNeedsWorkflow,
   autopilotHandoffFromText,
@@ -22,6 +23,8 @@ import {
   markAutopilotSubmitted,
   migrateAutopilotStore,
   nativePlannerPrompt,
+  nativeTemplateVisualFixPrompt,
+  nativeTemplateVisualVerificationPrompt,
   nativeVerificationPrompt,
   nativeWorkerPrompt,
   normalizeAutopilotGoal,
@@ -32,6 +35,9 @@ import {
   setAutopilotPlanStatuses,
   setAutopilotTaskStatuses,
   setAutopilotTemplateSelection,
+  templateVisualReportEventBody,
+  templateVisualReportFromText,
+  templateVisualReportNeedsFix,
   transitionAutopilotRun,
   updateAutopilotTaskQueue,
 } from "./helpers"
@@ -185,6 +191,125 @@ describe("autopilot helpers", () => {
     expect(prompt).toContain("Generated javascript client code")
   })
 
+  test("adds attached Penpot design context to native prompts", () => {
+    const run = autopilotContextFromRun(
+      createAutopilotRun({
+        runID: "run-penpot",
+        now: "2026-05-22T10:00:00.000Z",
+        goal: "Convert these Penpot frames into a responsive website",
+        workspace: "/repo",
+      }),
+    )
+    const resources = {
+      penpotAccess: "attached" as const,
+      penpotDesigns: [
+        {
+          instanceUrl: "https://penpot.paddie.io",
+          fileId: "file-1",
+          fileName: "Landing",
+          pageId: "page-1",
+          pageName: "Marketing",
+          frameIds: ["hero"],
+          frameNames: ["Hero"],
+          mode: "website" as const,
+          mcpName: "penpot-production",
+          styleSignals: {
+            colors: [],
+            typography: [],
+            layout: [],
+            components: [],
+            interactions: [],
+          },
+          assets: [],
+          tokens: {},
+          writebackAllowed: false,
+        },
+      ],
+      selectedPenpot: {
+        instanceUrl: "https://penpot.paddie.io",
+        fileId: "file-1",
+        fileName: "Landing",
+        pageId: "page-1",
+        pageName: "Marketing",
+        frameIds: ["hero"],
+        frameNames: ["Hero"],
+        mode: "website" as const,
+        mcpName: "penpot-production",
+        styleSignals: {
+          colors: [],
+          typography: [],
+          layout: [],
+          components: [],
+          interactions: [],
+        },
+        assets: [],
+        tokens: {},
+        writebackAllowed: false,
+      },
+    }
+
+    expect(nativePlannerPrompt(run, resources)).toContain("Penpot")
+    expect(nativeWorkerPrompt(run, resources)).toContain("Penpot design context")
+    expect(nativeWorkerPrompt(run, resources)).toContain("MCP server: penpot-production")
+    expect(nativeWorkerPrompt(run, resources)).toContain("Do not call Penpot write/update/delete/create tools")
+  })
+
+  test("adds template visual contracts to native prompts", () => {
+    const run = autopilotContextFromRun(
+      createAutopilotRun({
+        runID: "run-visual",
+        now: "2026-05-22T10:00:00.000Z",
+        goal: "Redesign with my landing template",
+        workspace: "/repo",
+      }),
+    )
+    const visualContract = {
+      templateID: "tpl_1",
+      templateName: "Landing",
+      description: "Marketing page",
+      stack: "React",
+      reference: { kind: "html" as const, value: "<main><h1>Launch faster</h1></main>" },
+      viewports: [{ name: "desktop" as const, width: 1440, height: 900 }],
+      styleSignals: {
+        colors: ["#ff5a1f"],
+        typography: ["font-size: 48px"],
+        layout: ["display: grid"],
+        motion: ["transition: opacity 200ms"],
+        landmarks: ["main", "h1"],
+        text: ["Launch faster"],
+      },
+      acceptanceNotes: ["Compare design intent, not exact pixels."],
+    }
+    const resources = {
+      selectedTemplate: {
+        id: "tpl_1",
+        name: "Landing",
+        description: "Marketing page",
+        stack: "React",
+        files: [{ path: "src/App.tsx", content: "export function App() { return null }" }],
+        visualContract,
+      },
+    }
+
+    expect(nativeWorkerPrompt(run, resources)).toContain("Preview + visual match verification")
+    expect(nativeVerificationPrompt(run, resources)).toContain("PADDIE_TEMPLATE_VISUAL_REPORT")
+    expect(nativeTemplateVisualVerificationPrompt(run, visualContract)).toContain("Run the required Paddie template visual verification")
+    expect(
+      nativeTemplateVisualFixPrompt(
+        run,
+        visualContract,
+        {
+          status: "fail",
+          body: "Status: fail\nFindings:\n- Hero is missing",
+          viewports: ["desktop"],
+          findings: ["Hero is missing"],
+          screenshots: [],
+        },
+        1,
+      ),
+    ).toContain("Fix the template visual verification failures")
+  })
+
   test("bounds large planner and workflow context in native prompts", () => {
     const run = autopilotContextFromRun(
       createAutopilotRun({
@@ -297,6 +422,50 @@ Changed files: app.tsx`),
     expect(autopilotHasHandoff("paddie_autopilot_handoff: case-insensitive too")).toBe(true)
   })
 
+  test("parses template visual reports and detects hard failures", () => {
+    const report = templateVisualReportFromText(`
+PADDIE_TEMPLATE_VISUAL_REPORT:
+Status: fail
+Viewports: desktop, tablet
+Preview: http://localhost:5173/
+Findings:
+- Blank page on tablet
+- Missing hero landmark
+Screenshots:
+- output/playwright/tablet.png
+PADDIE_TEMPLATE_VISUAL_REPORT_END
+`)
+
+    expect(report).toMatchObject({
+      status: "fail",
+      preview: "http://localhost:5173/",
+      viewports: ["desktop", "tablet"],
+      findings: ["Blank page on tablet", "Missing hero landmark"],
+      screenshots: ["output/playwright/tablet.png"],
+    })
+    expect(report && templateVisualReportNeedsFix(report)).toBe(true)
+    expect(report && templateVisualReportEventBody(report)).toContain("Blank page on tablet")
+
+    const mistakenPass = templateVisualReportFromText(`
+PADDIE_TEMPLATE_VISUAL_REPORT:
+Status: pass
+Findings:
+- Console error: ReferenceError
+PADDIE_TEMPLATE_VISUAL_REPORT_END
+`)
+    expect(mistakenPass && templateVisualReportNeedsFix(mistakenPass)).toBe(true)
+
+    const cleanPass = templateVisualReportFromText(`
+PADDIE_TEMPLATE_VISUAL_REPORT:
+Status: pass
+Viewports: desktop
+Findings:
+- Layout, hierarchy, and hero content match the template intent.
+PADDIE_TEMPLATE_VISUAL_REPORT_END
+`)
+    expect(cleanPass && templateVisualReportNeedsFix(cleanPass)).toBe(false)
+  })
+
   test("createAutopilotQueueItem normalises the goal and stamps an id", () => {
     const item = createAutopilotQueueItem({
       goal: "  Build a   dashboard   ",
@@ -358,6 +527,7 @@ Changed files: app.tsx`),
 
   test("classifies approval-gated actions", () => {
     expect(classifyAutopilotApproval("git push origin dev")).toBe("approval-required")
+    expect(classifyAutopilotApproval("Penpot writeback to update the Hero frame")).toBe("approval-required")
     expect(classifyAutopilotApproval("bun test")).toBe("safe")
   })
 
@@ -365,6 +535,7 @@ Changed files: app.tsx`),
     expect(autopilotGoalNeedsTemplate("use one of my templates")).toBe(true)
     expect(autopilotGoalNeedsWorkflow("wire the workflow builder flow")).toBe(true)
     expect(autopilotGoalNeedsData("integrate Paddie Memory and a knowledge base")).toBe(true)
+    expect(autopilotGoalNeedsPenpot("convert a Penpot frame into a template")).toBe(true)
   })
 
   test("transitions run state without losing the timeline", () => {

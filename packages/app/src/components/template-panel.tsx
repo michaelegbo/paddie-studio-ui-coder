@@ -13,7 +13,7 @@ import { useServer } from "@/context/server"
 import { useAuth } from "@/context/auth"
 import { useSettings } from "@/context/settings"
 import { paddieApi, UpgradeRequiredError } from "@/lib/paddie-api"
-import { STUDIO_LOGIN_URL, STUDIO_SIGNUP_URL } from "@/lib/paddie-links"
+import { STUDIO_LOGIN_URL, STUDIO_SIGNUP_URL, studioBillingUrl, type StudioBillingSource } from "@/lib/paddie-links"
 import {
   trackPaddieStudioEvent,
   type PaddieStudioEventName,
@@ -21,7 +21,9 @@ import {
 } from "@/lib/paddie-telemetry"
 import { AutopilotPanel } from "@/components/autopilot-panel"
 import { InspirationPanel } from "@/components/inspiration-panel"
+import { PaddieAccountPanel } from "@/components/paddie-account-panel"
 import { PaddieDataPanel } from "@/components/paddie-data-panel"
+import { PenpotPanel } from "@/components/penpot-panel"
 import { WorkflowBuilder, type WorkflowAttachPayload } from "@/components/workflow-builder"
 import { DialogConnectProvider } from "@/components/dialog-connect-provider"
 import { DialogSelectProvider } from "@/components/dialog-select-provider"
@@ -36,6 +38,7 @@ import {
   DEFAULT_TEMPLATE_THUMB_DATA_URL,
   TEMPLATE_PREVIEW_SANDBOX,
   filesFor,
+  createTemplateVisualContract,
   materialize,
   part,
   previewDoc,
@@ -102,7 +105,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 type Device = "desktop" | "tablet" | "mobile"
 type Desk = "1920" | "1600" | "1440"
-type StudioSection = "templates" | "inspiration" | "autopilot" | "data" | "workflow"
+type StudioSection = "templates" | "inspiration" | "autopilot" | "penpot" | "data" | "workflow" | "account"
 
 const views = {
   "1920": { w: 1920, h: 1080, label: "1920x1080" },
@@ -162,7 +165,7 @@ export function TemplatePanel(props: {
   const [wait, setWait] = createSignal(false)
   const [showUpgrade, setShowUpgrade] = createSignal(false)
   const [showProviderOnboarding, setShowProviderOnboarding] = createSignal(false)
-  const [upgradeInfo, setUpgradeInfo] = createSignal<{ required_tier: string; current_plan: string }>()
+  const [upgradeInfo, setUpgradeInfo] = createSignal<{ required_tier: string; current_plan: string; upgrade_url?: string }>()
   let frame: HTMLIFrameElement | undefined
   let stage: HTMLDivElement | undefined
 
@@ -200,6 +203,23 @@ export function TemplatePanel(props: {
   const canAccess = (template: Pick<UITemplateMeta, "can_access" | "tier">) => templateCanAccess(template)
   const providerCatalogReady = createMemo(() => providers.all().length > 0)
   const connectedModelProviderCount = createMemo(() => providers.paid().length)
+  const billingIssue = createMemo(() => {
+    const subscription = auth.subscription()
+    if (!auth.isAuthenticated() || !subscription) return
+    if (subscription.billing_required || subscription.trial_required || subscription.trial_expired) return subscription
+  })
+  const subscriptionBadge = createMemo(() => {
+    const subscription = auth.subscription()
+    if (!subscription) return ""
+    if (subscription.trial_expired) return "trial expired"
+    if (subscription.trial_required || subscription.billing_required) return "trial setup"
+    if (subscription.status === "trialing" && subscription.trial_days_remaining) {
+      return `${subscription.trial_days_remaining}d trial`
+    }
+    return subscription.plan_slug
+  })
+  const openBilling = (source: StudioBillingSource, upgradeUrl?: string | null, plan?: string | null) =>
+    platform.openLink(studioBillingUrl({ source, upgradeUrl, plan }))
 
   const trackTemplate = (
     event: PaddieStudioEventName,
@@ -244,6 +264,10 @@ export function TemplatePanel(props: {
   }
 
   createEffect(() => {
+    if (billingIssue()) {
+      setShowProviderOnboarding(false)
+      return
+    }
     if (
       !shouldShowStudioProviderOnboarding({
         providerCatalogReady: providerCatalogReady(),
@@ -258,6 +282,10 @@ export function TemplatePanel(props: {
 
   createEffect(() => {
     if (!showProviderOnboarding()) return
+    if (billingIssue()) {
+      setShowProviderOnboarding(false)
+      return
+    }
     if (connectedModelProviderCount() === 0) return
     setShowProviderOnboarding(false)
   })
@@ -357,7 +385,7 @@ export function TemplatePanel(props: {
       return true
     } catch (err) {
       if (err instanceof UpgradeRequiredError) {
-        setUpgradeInfo({ required_tier: err.required_tier, current_plan: err.current_plan })
+        setUpgradeInfo({ required_tier: err.required_tier, current_plan: err.current_plan, upgrade_url: err.upgrade_url })
         setShowUpgrade(true)
         setView("library")
         trackTemplate("template_detail_failed", "failure", list().find((template) => template.id === templateId), {
@@ -509,6 +537,12 @@ export function TemplatePanel(props: {
       html: opts?.html,
       text: opts?.text,
       files: filesFor(cur, item),
+      visualContract: createTemplateVisualContract(cur, item, {
+        selector: opts?.selector,
+        label: opts?.label,
+        html: opts?.html,
+        text: opts?.text,
+      }),
     })
     if (opts?.focus ?? true) focus()
     if (opts?.focus === false && props.chatHidden) props.onChatToggle?.()
@@ -806,11 +840,14 @@ export function TemplatePanel(props: {
               <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Upgrade required</div>
               <div class="mt-2 text-18-medium text-text-base">This template requires a higher plan</div>
               <div class="mt-2 text-13-medium text-text-weak">
-                Your current plan is <span class="font-semibold text-text-base capitalize">{upgradeInfo()?.current_plan ?? "free"}</span>.
+                Your current plan is <span class="font-semibold text-text-base capitalize">{upgradeInfo()?.current_plan ?? "trial setup"}</span>.
                 This template requires the <span class="font-semibold text-text-base capitalize">{upgradeInfo()?.required_tier ?? "pro"}</span> plan or above.
               </div>
               <div class="mt-6 flex gap-3">
-                <Button class="flex-1" onClick={() => platform.openLink("https://paddie.io/pricing")}>
+                <Button
+                  class="flex-1"
+                  onClick={() => openBilling("template-upgrade", upgradeInfo()?.upgrade_url, upgradeInfo()?.required_tier)}
+                >
                   View plans
                 </Button>
                 <Button variant="ghost" onClick={() => setShowUpgrade(false)}>
@@ -819,6 +856,55 @@ export function TemplatePanel(props: {
               </div>
             </div>
           </div>
+        </Show>
+
+        <Show when={billingIssue()}>
+          {(subscription) => (
+            <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 backdrop-blur-sm">
+              <div class="w-full max-w-lg rounded-[22px] border border-border-weaker-base bg-surface-base p-6 shadow-[var(--shadow-lg-border-base)]">
+                <div class="text-10-medium uppercase tracking-[0.14em] text-text-weak">
+                  Billing required
+                </div>
+                <div class="mt-2 text-20-medium text-text-base">
+                  {subscription().trial_expired ? "Your trial has ended" : "Start your 14-day Paddie trial"}
+                </div>
+                <div class="mt-2 text-13-medium leading-6 text-text-weak">
+                  {subscription().message ??
+                    "Choose a paid plan and add a card to continue using Studio templates, workflows, data, and Autopilot. Cancel before the trial ends and you will not be charged."}
+                </div>
+                <div class="mt-5 rounded-2xl border border-border-weaker-base bg-background-base px-4 py-3">
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-12-medium text-text-weak">Current status</span>
+                    <span class="rounded-full border border-border-weaker-base bg-background-stronger px-2 py-1 text-10-medium uppercase tracking-[0.08em] text-text-base">
+                      {subscriptionBadge()}
+                    </span>
+                  </div>
+                  <div class="mt-2 text-12-medium text-text-weak">
+                    RMN is the billing authority. Studio will unlock as soon as RMN reports an active or trialing subscription.
+                  </div>
+                </div>
+                <div class="mt-6 grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+                  <Button class="justify-center" onClick={() => openBilling("templates", subscription().upgrade_url)}>
+                    Choose plan
+                  </Button>
+                  <Button variant="ghost" class="justify-center" onClick={() => void auth.refresh()}>
+                    Refresh
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    class="justify-center"
+                    onClick={() => {
+                      auth.logout()
+                      setList([])
+                      setListError(undefined)
+                    }}
+                  >
+                    Sign out
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </Show>
 
         <Show when={showProviderOnboarding()}>
@@ -845,11 +931,11 @@ export function TemplatePanel(props: {
                         <div class="text-15-medium text-text-base">
                           {autopilotAvailable()
                             ? inspirationAvailable()
-                              ? "Templates, inspiration, autopilot, data & workflows"
-                              : "Templates, autopilot, data & workflows"
+                              ? "Templates, inspiration, autopilot, Penpot, data & workflows"
+                              : "Templates, autopilot, Penpot, data & workflows"
                             : inspirationAvailable()
-                              ? "Templates, inspiration, data & workflows"
-                              : "Templates, data & workflows"}
+                              ? "Templates, inspiration, Penpot, data & workflows"
+                              : "Templates, Penpot, data & workflows"}
                         </div>
                       </div>
                     </div>
@@ -858,8 +944,10 @@ export function TemplatePanel(props: {
                         {tab("templates", "Templates")}
                         <Show when={inspirationAvailable()}>{tab("inspiration", "Inspiration")}</Show>
                         <Show when={autopilotAvailable()}>{tab("autopilot", "Autopilot")}</Show>
+                        {tab("penpot", "Penpot")}
                         {tab("data", "Data")}
                         {tab("workflow", "Workflow Builder")}
+                        {tab("account", "Dashboard")}
                       </div>
                       <Show when={auth.isAuthenticated()}>
                         <div class="flex items-center gap-2 shrink-0">
@@ -878,7 +966,7 @@ export function TemplatePanel(props: {
                             <span class="text-11-medium text-text-weak truncate max-w-[160px]">{auth.user()?.email ?? "Signed in"}</span>
                             <Show when={auth.subscription()}>
                               <span class="rounded-full border border-border-weaker-base px-1.5 py-0.5 text-10-medium text-text-weak capitalize">
-                                {auth.subscription()!.plan_slug}
+                                {subscriptionBadge()}
                               </span>
                             </Show>
                           </div>
@@ -902,8 +990,12 @@ export function TemplatePanel(props: {
                       ? "Build and manage Paddie workflows with the same account used for Studio templates."
                       : section() === "data"
                         ? "View Paddie Memory, AI RAG knowledge bases, and integration keys from your account."
+                      : section() === "account"
+                        ? "Manage your Studio plan, billing handoff, and account usage from Paddie."
                       : section() === "autopilot"
                         ? "Plan, build, test, preview, and iterate through a scoped native opencode worker session."
+                      : section() === "penpot"
+                        ? "Connect Penpot MCP, inspect frames, attach design context, and hand selected frames to chat or Autopilot."
                       : section() === "inspiration"
                         ? "Browse a public website, capture a selectable snapshot, and attach page or element references to chat."
                         : "Browse a starter first, then open it in a desktop canvas. Curated parts stay hidden until you select one or open them yourself."}
@@ -916,6 +1008,10 @@ export function TemplatePanel(props: {
 
                 <Show when={section() === "autopilot" && autopilotAvailable()}>
                   <AutopilotPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
+                </Show>
+
+                <Show when={section() === "penpot"}>
+                  <PenpotPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
                 </Show>
 
                 <Show when={section() === "workflow"}>
@@ -943,6 +1039,20 @@ export function TemplatePanel(props: {
                     }
                   >
                     <PaddieDataPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
+                  </Show>
+                </Show>
+
+                <Show when={section() === "account"}>
+                  <Show
+                    when={auth.isAuthenticated()}
+                    fallback={
+                      <LoginCard
+                        desc="Use your Paddie account to manage your plan and analytics"
+                        openLink={(url) => platform.openLink(url)}
+                      />
+                    }
+                  >
+                    <PaddieAccountPanel />
                   </Show>
                 </Show>
 

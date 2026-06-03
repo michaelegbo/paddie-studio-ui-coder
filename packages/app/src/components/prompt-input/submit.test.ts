@@ -686,4 +686,64 @@ describe("prompt submit worktree selection", () => {
       goal: "Build and verify a dashboard",
     })
   })
+
+  test("restores Penpot transient context when prompt send fails", async () => {
+    params = { id: "session-penpot" }
+    promptAsyncError = new Error("network down")
+    contextItems.push({
+      key: "penpot-design:https://penpot.paddie.io:penpot-production:file-1:page-1:website:hero:read",
+      type: "penpot-design",
+      instanceUrl: "https://penpot.paddie.io",
+      fileId: "file-1",
+      fileName: "Landing",
+      pageId: "page-1",
+      pageName: "Marketing",
+      frameIds: ["hero"],
+      frameNames: ["Hero"],
+      mode: "website",
+      mcpName: "penpot-production",
+      styleSignals: {
+        colors: [],
+        typography: [],
+        layout: [],
+        components: [],
+        interactions: [],
+      },
+      assets: [],
+      tokens: {},
+      writebackAllowed: false,
+      summary: "Build from this frame.",
+    })
+
+    const submit = createPromptSubmit({
+      info: () => ({ id: "session-penpot" }),
+      imageAttachments: () => [],
+      commentCount: () => 0,
+      autoAccept: () => false,
+      mode: () => "normal",
+      working: () => false,
+      editor: () => undefined,
+      queueScroll: () => undefined,
+      promptLength: (value) => value.reduce((sum, part) => sum + ("content" in part ? part.content.length : 0), 0),
+      addToHistory: () => undefined,
+      resetHistoryNavigation: () => undefined,
+      setMode: () => undefined,
+      setPopover: () => undefined,
+      onSubmit: () => undefined,
+    })
+
+    await submit.handleSubmit({ preventDefault: () => undefined } as unknown as Event)
+    for (let i = 0; i < 20 && contextAdds.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    expect(contextRemoves).toContain("penpot-design:https://penpot.paddie.io:penpot-production:file-1:page-1:website:hero:read")
+    expect(contextAdds).toHaveLength(1)
+    expect(contextAdds[0]).toMatchObject({
+      type: "penpot-design",
+      instanceUrl: "https://penpot.paddie.io",
+      fileId: "file-1",
+      frameNames: ["Hero"],
+    })
+  })
 })

@@ -13,11 +13,14 @@ import type {
   InspirationContextItem,
   KnowledgeBaseContextItem,
   MemoryContextItem,
+  PenpotDesignContextItem,
   Prompt,
   TemplateContextItem,
   WorkflowContextItem,
 } from "@/context/prompt"
-import { paddieDataSkillInstruction } from "@/paddie-data/helpers"
+import { paddieDataLlmRuntimeInstruction, paddieDataSkillInstruction } from "@/paddie-data/helpers"
+import { formatPenpotDesignNote } from "@/penpot/helpers"
+import { formatTemplateVisualContract } from "@/template/helpers"
 import { Identifier } from "@/utils/id"
 import { createCommentMetadata, formatCommentNote } from "@/utils/comment-note"
 
@@ -37,6 +40,7 @@ type BuildRequestPartsInput = {
     | DataPlaygroundContextItem
     | InspirationContextItem
     | AutopilotContextItem
+    | PenpotDesignContextItem
   ))[]
   images: ImageAttachmentPart[]
   text: string
@@ -90,6 +94,9 @@ const isInspirationContext = (
 const isAutopilotContext = (
   item: BuildRequestPartsInput["context"][number],
 ): item is { key: string } & AutopilotContextItem => item.type === "autopilot"
+const isPenpotDesignContext = (
+  item: BuildRequestPartsInput["context"][number],
+): item is { key: string } & PenpotDesignContextItem => item.type === "penpot-design"
 
 const TEMPLATE_REFERENCE_FILE_LIMIT = 48_000
 const TEMPLATE_REFERENCE_TOTAL_LIMIT = 140_000
@@ -175,6 +182,15 @@ const formatTemplateNote = (item: TemplateContextItem) => {
     "Apply the selected template faithfully: preserve its visible layout, spacing, hierarchy, colors, and interaction intent while fitting the current codebase.",
   )
   lines.push("Use the selected element, selector, and part guidance as the priority signal when they are present.")
+  if (item.visualContract) {
+    lines.push(formatTemplateVisualContract(item.visualContract))
+    lines.push(
+      "After the redesign, run a browser/Playwright visual comparison against this contract when a preview can be started. Render the reference and output at the listed viewports, capture screenshots or notes, inspect console/runtime errors, and compare design intent rather than exact pixels.",
+    )
+    lines.push(
+      "Report the result with this exact block: PADDIE_TEMPLATE_VISUAL_REPORT, Status: pass|fail|blocked, Viewports, Preview, Findings, Screenshots, PADDIE_TEMPLATE_VISUAL_REPORT_END. Treat no preview, blank output, major console/runtime errors, or missing key landmarks as fail/blocked.",
+    )
+  }
   if (references.notes.length) lines.push(...references.notes)
   lines.push("Reference files:")
   lines.push(...references.blocks)
@@ -233,6 +249,7 @@ const formatMemoryNote = (item: MemoryContextItem) => {
   const lines = [
     "The user attached Paddie Memory as a service integration for this implementation.",
     paddieDataSkillInstruction(),
+    paddieDataLlmRuntimeInstruction(item.llm),
     "This is not a static dump of individual memory records. Integrate the Memory Router service so the app can retrieve and store memories dynamically at runtime.",
     `Reference mode: ${item.mode}`,
     `Label: ${item.label}`,
@@ -248,7 +265,7 @@ const formatMemoryNote = (item: MemoryContextItem) => {
   const metadata = formatJsonSummary(item.metadata)
   if (metadata) lines.push(`Metadata summary:\n${metadata}`)
   lines.push(
-    "Create or reuse a stable app-user-to-Paddie-user mapping, pass that dynamic user_id with every memory call, and keep Paddie API keys in trusted server-side configuration. Do not hardcode the Studio explorer user ID in product code.",
+    "Create or reuse a stable app-user-to-Paddie-user mapping, pass that dynamic user_id with every memory call, keep Paddie API keys in trusted server-side configuration, and make the app's LLM call Memory Router as a tool/context provider before generating final responses. Do not hardcode the Studio explorer user ID in product code.",
   )
   lines.push(
     "Use this explicit integration request only. Do not fetch or infer unrelated tenant memory unless the user asks and the app has proper server-side authorization.",
@@ -260,6 +277,7 @@ const formatKnowledgeBaseNote = (item: KnowledgeBaseContextItem) => {
   const lines = [
     "The user attached Paddie Knowledge Base / AI RAG as a service integration for this implementation.",
     paddieDataSkillInstruction(),
+    paddieDataLlmRuntimeInstruction(item.llm),
     "This is not a static query answer or source-chunk dump. Integrate the Knowledge Base/RAG service so the app can query the selected knowledge base scope dynamically at runtime.",
     item.mode === "all"
       ? `Knowledge base scope: all selected/available Paddie knowledge bases (${item.knowledgeBases?.length ?? "unknown"} configured)`
@@ -284,7 +302,7 @@ const formatKnowledgeBaseNote = (item: KnowledgeBaseContextItem) => {
   if (item.query?.trim()) lines.push(`Sample runtime query: ${item.query.trim()}`)
   if (item.apiNote?.trim()) lines.push(`API integration note:\n${item.apiNote.trim()}`)
   lines.push(
-    "Keep API keys out of client bundles, call Paddie/RMN from trusted server code where possible, preserve RMN plan gates, and pass selected knowledge base IDs dynamically instead of embedding retrieved answers into the app.",
+    "Keep API keys out of client bundles, call Paddie/RMN from trusted server code where possible, preserve RMN plan gates, pass selected knowledge base IDs dynamically, and feed retrieved chunks/citations into the app's LLM before rendering a final answer. Do not embed retrieved answers into the app.",
   )
   return lines.join("\n\n")
 }
@@ -293,13 +311,16 @@ const formatDataPlaygroundNote = (item: DataPlaygroundContextItem) => {
   const lines = [
     "The user attached a Paddie Data Playground configuration as a dynamic Memory/RAG implementation contract.",
     paddieDataSkillInstruction(),
+    paddieDataLlmRuntimeInstruction(item.llm),
     "Use this to build runtime integration code for the user's app. Do not embed the current playground transcript, returned memories, RAG answers, source chunks, or API secrets as static content.",
     `Label: ${item.label}`,
     `API base: ${item.apiBase}`,
     `API key environment variable: ${item.apiKeyEnv}`,
+    `Memory service attached: ${item.memoryService === false ? "no" : "yes"}`,
     `Memory mode: ${item.mode}`,
     `Dynamic user ID strategy: ${item.userIDStrategy}`,
   ]
+  if (item.knowledgeBaseMode) lines.push(`Knowledge base attachment mode: ${item.knowledgeBaseMode}`)
   if (item.routerMode) lines.push(`Router mode default: ${item.routerMode}`)
   if (item.strategy) lines.push(`Manual memory search strategy default: ${item.strategy}`)
   if (item.memoryType) lines.push(`Memory type filter/hint: ${item.memoryType}`)
@@ -323,10 +344,13 @@ const formatDataPlaygroundNote = (item: DataPlaygroundContextItem) => {
     lines.push("Selected knowledge bases for runtime RAG: none selected; load available knowledge bases at runtime or expose a selector when the app needs RAG.")
   }
   lines.push(`Integration contract:\n${item.integrationNote.trim()}`)
+  if (item.implementationCode?.trim()) {
+    lines.push(`Full portable playground implementation code:\n${item.implementationCode.trim()}`)
+  }
   const metadata = formatJsonSummary(item.metadata)
   if (metadata) lines.push(`Metadata summary:\n${metadata}`)
   lines.push(
-    "Implement reusable app code such as server routes, services, hooks, or clients for Memory Router and Knowledge Base queries. Keep Paddie API keys server-side, pass dynamic app-user IDs into Memory Router, preserve RMN plan gates, and make knowledge-base selection configurable at runtime.",
+    "Implement reusable app code such as server routes, services, hooks, or clients for Memory Router, Knowledge Base queries, and the selected LLM provider. Keep Paddie and LLM API keys server-side, pass dynamic app-user IDs into Memory Router, preserve RMN plan gates, make knowledge-base selection configurable at runtime, and let the LLM orchestrate when Memory/RAG are called before it produces the final UI response.",
   )
   return lines.join("\n\n")
 }
@@ -414,6 +438,8 @@ const formatAutopilotNote = (item: AutopilotContextItem) => {
   }
   return lines.join("\n\n")
 }
+
+const formatPenpotNote = (item: PenpotDesignContextItem) => formatPenpotDesignNote(item)
 
 const toOptimisticPart = (part: PromptRequestPart, sessionID: string, messageID: string): Part => {
   if (part.type === "text") {
@@ -578,6 +604,17 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
           id: Identifier.ascending("part"),
           type: "text",
           text: formatAutopilotNote(item),
+          synthetic: true,
+        } satisfies PromptRequestPart,
+      ]
+    }
+
+    if (isPenpotDesignContext(item)) {
+      return [
+        {
+          id: Identifier.ascending("part"),
+          type: "text",
+          text: formatPenpotNote(item),
           synthetic: true,
         } satisfies PromptRequestPart,
       ]
