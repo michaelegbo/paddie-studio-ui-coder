@@ -1,5 +1,6 @@
 import { getFilenameTruncated } from "@opencode-ai/core/util/path"
 import type { ContextItem } from "@/context/prompt"
+import { penpotContextBody, penpotContextLabel } from "@/penpot/helpers"
 
 export function contextItemChip(item: ContextItem & { key: string }) {
   if (item.type === "file") {
@@ -46,12 +47,13 @@ export function contextItemChip(item: ContextItem & { key: string }) {
   }
 
   if (item.type === "data-playground") {
+    const runtime = item.llm?.provider ? ` via ${item.llm.provider}` : ""
     return {
       label: item.label,
       body:
         item.knowledgeBases.length > 0
-          ? `${item.mode} memory, ${item.knowledgeBases.length} KB${item.knowledgeBases.length === 1 ? "" : "s"}`
-          : `${item.mode} memory playground`,
+          ? `${item.mode} memory, ${item.knowledgeBases.length} KB${item.knowledgeBases.length === 1 ? "" : "s"}${runtime}`
+          : `${item.mode} memory playground${runtime}`,
       icon: "brain" as const,
     }
   }
@@ -69,6 +71,14 @@ export function contextItemChip(item: ContextItem & { key: string }) {
       label: "Autopilot",
       body: item.goal,
       icon: "brain" as const,
+    }
+  }
+
+  if (item.type === "penpot-design") {
+    return {
+      label: penpotContextLabel(item),
+      body: penpotContextBody(item),
+      icon: "window-cursor" as const,
     }
   }
 

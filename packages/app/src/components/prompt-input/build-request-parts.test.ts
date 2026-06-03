@@ -116,6 +116,58 @@ describe("buildRequestParts", () => {
     expect(synthetic).toHaveLength(1)
   })
 
+  test("adds template visual verification instructions when template context is attached", () => {
+    const result = buildRequestParts({
+      prompt: [{ type: "text", content: "redesign this with the template", start: 0, end: 31 }],
+      context: [
+        {
+          key: "template:tpl_1:hero:part",
+          type: "template",
+          templateID: "tpl_1",
+          templateName: "Landing",
+          description: "Marketing landing page",
+          stack: "React",
+          partID: "hero",
+          partName: "Hero",
+          files: [{ path: "src/App.tsx", content: "export function App() { return <main /> }" }],
+          visualContract: {
+            templateID: "tpl_1",
+            templateName: "Landing",
+            description: "Marketing landing page",
+            stack: "React",
+            partID: "hero",
+            partName: "Hero",
+            reference: { kind: "html", value: "<main><h1>Launch faster</h1></main>" },
+            viewports: [{ name: "desktop", width: 1440, height: 900 }],
+            styleSignals: {
+              colors: ["#ff5a1f"],
+              typography: ["font-size: 48px"],
+              layout: ["display: grid"],
+              motion: ["transition: opacity 200ms"],
+              landmarks: ["main", "h1"],
+              text: ["Launch faster"],
+            },
+            acceptanceNotes: ["Compare design intent, not exact pixels."],
+          },
+        },
+      ],
+      images: [],
+      text: "redesign this with the template",
+      messageID: "msg_template",
+      sessionID: "ses_template",
+      sessionDirectory: "/repo",
+    })
+
+    const synthetic = result.requestParts.find((part) => part.type === "text" && part.synthetic)
+    expect(synthetic?.type).toBe("text")
+    if (synthetic?.type === "text") {
+      expect(synthetic.text).toContain("Template visual verification contract")
+      expect(synthetic.text).toContain("Playwright visual comparison")
+      expect(synthetic.text).toContain("PADDIE_TEMPLATE_VISUAL_REPORT")
+      expect(synthetic.text).toContain("Launch faster")
+    }
+  })
+
   test("adds Paddie workflow context with generated client code and graph", () => {
     const result = buildRequestParts({
       prompt: [{ type: "text", content: "wire this workflow into the app", start: 0, end: 31 }],
@@ -174,6 +226,7 @@ describe("buildRequestParts", () => {
           apiBase: "https://api.paddie.io/api",
           apiKeyEnv: "PADDIE_API_KEY",
           userIDStrategy: "Create or resolve a stable app-specific Paddie Memory user_id for each end user.",
+          llm: { provider: "openai", apiKeyEnv: "OPENAI_API_KEY", model: "gpt-4.1-mini" },
           metadata: { selectedExplorerUserID: "user_1" },
         },
       ],
@@ -191,6 +244,8 @@ describe("buildRequestParts", () => {
       expect(synthetic.text).toContain("paddie-data-integrator")
       expect(synthetic.text).toContain("This is not a static dump of individual memory records")
       expect(synthetic.text).toContain("API key environment variable: PADDIE_API_KEY")
+      expect(synthetic.text).toContain("LLM runtime required")
+      expect(synthetic.text).toContain("OPENAI_API_KEY")
       expect(synthetic.text).toContain("Dynamic user ID strategy")
       expect(synthetic.text).toContain("What should this app remember?")
       expect(synthetic.text).toContain("Do not hardcode the Studio explorer user ID")
@@ -213,6 +268,7 @@ describe("buildRequestParts", () => {
           endpoint: "https://api.paddie.io/api/knowledge-bases/kb_1/query",
           apiBase: "https://api.paddie.io/api",
           apiKeyEnv: "PADDIE_API_KEY",
+          llm: { provider: "anthropic", apiKeyEnv: "ANTHROPIC_API_KEY", model: "claude-3-5-sonnet-latest" },
           integrationNote: "Query this KB through a trusted server route.",
           knowledgeBases: [{ id: "kb_1", name: "Onboarding", documentCount: 1, chunkCount: 12 }],
         },
@@ -233,6 +289,8 @@ describe("buildRequestParts", () => {
       expect(synthetic.text).toContain("Knowledge base: Onboarding (kb_1)")
       expect(synthetic.text).toContain("Endpoint: https://api.paddie.io/api/knowledge-bases/kb_1/query")
       expect(synthetic.text).toContain("API key environment variable: PADDIE_API_KEY")
+      expect(synthetic.text).toContain("LLM runtime required")
+      expect(synthetic.text).toContain("ANTHROPIC_API_KEY")
       expect(synthetic.text).toContain("Onboarding (kb_1) - 1 docs, 12 chunks")
       expect(synthetic.text).toContain("Keep API keys out of client bundles")
       expect(synthetic.text).toContain("preserve RMN plan gates")
@@ -260,6 +318,10 @@ describe("buildRequestParts", () => {
           sampleQuery: "How should onboarding work?",
           conversationID: "conversation_1",
           integrationNote: "Build Memory Router and Knowledge Base services, not static answers.",
+          implementationCode: "// File: src/lib/paddie-data.ts\nexport async function runPaddiePlaygroundTurn() {}",
+          memoryService: true,
+          knowledgeBaseMode: "selected",
+          llm: { provider: "openai", apiKeyEnv: "OPENAI_API_KEY", model: "gpt-4.1-mini" },
           knowledgeBases: [{ id: "kb_1", name: "Onboarding", documentCount: 1, chunkCount: 12 }],
           metadata: { service: "paddie-data-playground" },
         },
@@ -278,12 +340,17 @@ describe("buildRequestParts", () => {
       expect(synthetic.text).toContain("paddie-data-integrator")
       expect(synthetic.text).toContain("dynamic Memory/RAG implementation contract")
       expect(synthetic.text).toContain("Memory mode: router")
+      expect(synthetic.text).toContain("Memory service attached: yes")
+      expect(synthetic.text).toContain("Knowledge base attachment mode: selected")
+      expect(synthetic.text).toContain("LLM runtime required")
       expect(synthetic.text).toContain("Router mode default: conversation")
       expect(synthetic.text).toContain("Memory type filter/hint: preference")
       expect(synthetic.text).toContain("Onboarding (kb_1) - 1 docs, 12 chunks")
       expect(synthetic.text).toContain("Sample runtime query: How should onboarding work?")
       expect(synthetic.text).toContain("Do not embed the current playground transcript")
-      expect(synthetic.text).toContain("Keep Paddie API keys server-side")
+      expect(synthetic.text).toContain("Keep Paddie and LLM API keys server-side")
+      expect(synthetic.text).toContain("Full portable playground implementation code")
+      expect(synthetic.text).toContain("src/lib/paddie-data.ts")
       expect(synthetic.text).not.toContain("Source chunks:")
       expect(synthetic.text).not.toContain("Included memories:")
     }
@@ -332,6 +399,54 @@ describe("buildRequestParts", () => {
       expect(synthetic.text).toContain("font-size: 48px")
       expect(synthetic.text).toContain("@keyframes fade-in")
       expect(synthetic.text).toContain("Do not copy private assets")
+    }
+  })
+
+  test("adds Penpot design context as an MCP-backed design reference", () => {
+    const result = buildRequestParts({
+      prompt: [{ type: "text", content: "build from this Penpot frame", start: 0, end: 29 }],
+      context: [
+        {
+          key: "penpot-design:https://penpot.paddie.io:penpot-production:file-1:page-1:website:hero:read",
+          type: "penpot-design",
+          instanceUrl: "https://penpot.paddie.io",
+          fileId: "file-1",
+          fileName: "Landing",
+          pageId: "page-1",
+          pageName: "Marketing",
+          frameIds: ["hero"],
+          frameNames: ["Hero"],
+          mode: "website",
+          mcpName: "penpot-production",
+          styleSignals: {
+            colors: [],
+            typography: [],
+            layout: [],
+            components: [],
+            interactions: [],
+          },
+          assets: [],
+          tokens: {},
+          writebackAllowed: false,
+          summary: "Use as the source design.",
+        },
+      ],
+      images: [],
+      text: "build from this Penpot frame",
+      messageID: "msg_penpot",
+      sessionID: "ses_penpot",
+      sessionDirectory: "/repo",
+    })
+
+    const synthetic = result.requestParts.find((part) => part.type === "text" && part.synthetic)
+    expect(synthetic?.type).toBe("text")
+    if (synthetic?.type === "text") {
+      expect(synthetic.text).toContain("Penpot design context")
+      expect(synthetic.text).toContain("MCP server: penpot-production")
+      expect(synthetic.text).toContain("Hero (hero)")
+      expect(synthetic.text).toContain("Writeback allowed: no")
+      expect(synthetic.text).toContain("Do not call Penpot write/update/delete/create tools")
+      expect(synthetic.text).not.toContain("userToken")
     }
   })
 

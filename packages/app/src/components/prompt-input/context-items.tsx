@@ -72,6 +72,13 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                   <span class="text-text-invert-base/70">
                     {item.mode} memory{item.memoryType ? ` - ${item.memoryType}` : ""} - {item.knowledgeBases.length} KBs
                   </span>
+                  <Show when={item.llm}>
+                    {(value) => (
+                      <span class="text-text-invert-base/70">
+                        LLM: {value().provider} using {value().apiKeyEnv}
+                      </span>
+                    )}
+                  </Show>
                   <Show when={item.sampleQuery}>{(value) => <span class="break-all text-text-invert-base/70">{value()}</span>}</Show>
                 </div>
               ) : item.type === "inspiration" ? (
@@ -85,6 +92,19 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                   <span class="truncate text-text-invert-base">{item.goal}</span>
                   <span class="break-all text-text-invert-base/80">{item.workspace}</span>
                   <span class="text-text-invert-base/70">{item.status}</span>
+                </div>
+              ) : item.type === "penpot-design" ? (
+                <div class="flex max-w-[320px] flex-col gap-1">
+                  <span class="truncate text-text-invert-base">
+                    {item.frameNames.length ? item.frameNames.join(", ") : item.fileName ?? "Penpot design"}
+                  </span>
+                  <span class="break-all text-text-invert-base/80">{item.instanceUrl}</span>
+                  <span class="text-text-invert-base/70">
+                    {item.mode} through {item.mcpName}
+                  </span>
+                  <Show when={item.writebackAllowed}>
+                    <span class="text-text-invert-base/70">Writeback requires approval</span>
+                  </Show>
                 </div>
               ) : (
                 <div class="flex max-w-[320px] flex-col gap-1">
@@ -124,6 +144,8 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                       <Icon name="window-cursor" class="shrink-0 size-3.5 text-icon-info-base" />
                     ) : item.type === "autopilot" ? (
                       <Icon name="brain" class="shrink-0 size-3.5 text-icon-info-base" />
+                    ) : item.type === "penpot-design" ? (
+                      <Icon name="window-cursor" class="shrink-0 size-3.5 text-icon-info-base" />
                     ) : (
                       <Icon name="layout-right-full" class="shrink-0 size-3.5 text-icon-info-base" />
                     )}

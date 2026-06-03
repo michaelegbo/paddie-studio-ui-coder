@@ -203,7 +203,7 @@ type CommentItem = {
 
 type TransientItem = Extract<
   ContextItem,
-  { type: "element" | "template" | "workflow" | "memory" | "knowledge-base" | "data-playground" | "inspiration" | "autopilot" }
+  { type: "element" | "template" | "workflow" | "memory" | "knowledge-base" | "data-playground" | "inspiration" | "autopilot" | "penpot-design" }
 > & {
   key: string
 }
@@ -216,7 +216,8 @@ const isTransientItem = (item: ContextItem | (ContextItem & { key: string })): i
   item.type === "knowledge-base" ||
   item.type === "data-playground" ||
   item.type === "inspiration" ||
-  item.type === "autopilot"
+  item.type === "autopilot" ||
+  item.type === "penpot-design"
 
 export function createPromptSubmit(input: PromptSubmitInput) {
   const navigate = useNavigate()
@@ -338,6 +339,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
           apiBase: item.apiBase,
           apiKeyEnv: item.apiKeyEnv,
           userIDStrategy: item.userIDStrategy,
+          llm: item.llm,
           metadata: item.metadata,
         })
         continue
@@ -356,6 +358,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
           apiBase: item.apiBase,
           apiKeyEnv: item.apiKeyEnv,
           integrationNote: item.integrationNote,
+          llm: item.llm,
           knowledgeBases: item.knowledgeBases,
         })
         continue
@@ -378,6 +381,10 @@ export function createPromptSubmit(input: PromptSubmitInput) {
           sampleQuery: item.sampleQuery,
           conversationID: item.conversationID,
           integrationNote: item.integrationNote,
+          implementationCode: item.implementationCode,
+          memoryService: item.memoryService,
+          knowledgeBaseMode: item.knowledgeBaseMode,
+          llm: item.llm,
           knowledgeBases: item.knowledgeBases,
           metadata: item.metadata,
         })
@@ -403,6 +410,27 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         continue
       }
 
+      if (item.type === "penpot-design") {
+        prompt.context.add({
+          type: "penpot-design",
+          instanceUrl: item.instanceUrl,
+          fileId: item.fileId,
+          fileName: item.fileName,
+          pageId: item.pageId,
+          pageName: item.pageName,
+          frameIds: item.frameIds,
+          frameNames: item.frameNames,
+          mode: item.mode,
+          mcpName: item.mcpName,
+          styleSignals: item.styleSignals,
+          assets: item.assets,
+          tokens: item.tokens,
+          writebackAllowed: item.writebackAllowed,
+          summary: item.summary,
+        })
+        continue
+      }
+
       prompt.context.add({
         type: "template",
         templateID: item.templateID,
@@ -417,6 +445,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         html: item.html,
         text: item.text,
         files: item.files,
+        visualContract: item.visualContract,
       })
     }
   }

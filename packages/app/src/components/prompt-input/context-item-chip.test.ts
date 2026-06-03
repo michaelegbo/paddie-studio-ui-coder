@@ -10,6 +10,8 @@ const styleSignals = {
   transitions: [],
   animations: [],
   keyframes: [],
+  components: [],
+  interactions: [],
 }
 
 describe("contextItemChip", () => {
@@ -73,6 +75,32 @@ describe("contextItemChip", () => {
     })
   })
 
+  test("labels Penpot design references by selected frames", () => {
+    expect(
+      contextItemChip({
+        key: "penpot-design:https://penpot.paddie.io:penpot-production:file-1:page-1:website:hero:read",
+        type: "penpot-design",
+        instanceUrl: "https://penpot.paddie.io",
+        fileId: "file-1",
+        fileName: "Landing file",
+        pageId: "page-1",
+        pageName: "Marketing",
+        frameIds: ["hero"],
+        frameNames: ["Hero"],
+        mode: "website",
+        mcpName: "penpot-production",
+        styleSignals,
+        assets: [],
+        tokens: {},
+        writebackAllowed: false,
+      }),
+    ).toMatchObject({
+      label: "Hero",
+      body: "website - 1 frame",
+      icon: "window-cursor",
+    })
+  })
+
   test("labels Paddie Memory integration references by service strategy", () => {
     expect(
       contextItemChip({
@@ -123,11 +151,12 @@ describe("contextItemChip", () => {
         memoryType: "preference",
         userIDStrategy: "Create a stable app-specific Paddie Memory user_id per end user.",
         integrationNote: "Build runtime Memory/RAG services.",
+        llm: { provider: "openai", apiKeyEnv: "OPENAI_API_KEY", model: "gpt-4.1-mini" },
         knowledgeBases: [{ id: "kb_1", name: "Onboarding", documentCount: 1, chunkCount: 12 }],
       }),
     ).toMatchObject({
       label: "Paddie Data Playground",
-      body: "router memory, 1 KB",
+      body: "router memory, 1 KB via openai",
       icon: "brain",
     })
   })
