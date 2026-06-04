@@ -8,6 +8,21 @@ type OpenDirectoryPickerOptions = { title?: string; multiple?: boolean }
 type OpenFilePickerOptions = { title?: string; multiple?: boolean; accept?: string[]; extensions?: string[] }
 type SaveFilePickerOptions = { title?: string; defaultPath?: string }
 type UpdateInfo = { updateAvailable: boolean; version?: string }
+export type DOMRectLike = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+type EmbeddedWebview = {
+  open(input: { id: string; url: string; bounds: DOMRectLike; visible: boolean }): Promise<void>
+  setBounds(id: string, bounds: DOMRectLike): Promise<void>
+  setVisible(id: string, visible: boolean): Promise<void>
+  navigate(id: string, url: string): Promise<void>
+  reload(id: string): Promise<void>
+  focus(id: string): Promise<void>
+  close(id: string): Promise<void>
+}
 type WorkbenchEntry = {
   name: string
   path: string
@@ -105,6 +120,9 @@ export type Platform = {
 
   /** Webview zoom level (desktop only) */
   webviewZoom?: Accessor<number>
+
+  /** Native child webview surface for embedded remote tools (desktop only) */
+  embeddedWebview?: EmbeddedWebview
 
   /** Check if an editor app exists (desktop only) */
   checkAppExists?(appName: string): Promise<boolean>

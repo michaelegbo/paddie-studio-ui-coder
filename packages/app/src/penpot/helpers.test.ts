@@ -73,6 +73,38 @@ describe("Penpot helpers", () => {
       mode: "website",
       mcpName: "penpot-production",
       writebackAllowed: false,
+      selectionSource: "manual",
+      selectedItems: [],
+    })
+  })
+
+  test("creates a design context from a bridge selection", () => {
+    expect(
+      createPenpotDesignContext({
+        instanceUrl: "https://penpot.paddie.io",
+        mode: "template",
+        selectionId: "session-1",
+        selection: {
+          instanceUrl: "https://penpot.paddie.io",
+          fileId: "file-1",
+          fileName: "Landing",
+          pageId: "page-1",
+          pageName: "Screens",
+          selectedAt: "2026-06-04T10:00:00.000Z",
+          items: [{ id: "frame-1", name: "Hero", type: "frame", path: "Screens/Hero" }],
+        },
+      }),
+    ).toMatchObject({
+      fileId: "file-1",
+      fileName: "Landing",
+      pageId: "page-1",
+      pageName: "Screens",
+      frameIds: ["frame-1"],
+      frameNames: ["Hero"],
+      selectionSource: "bridge",
+      selectionId: "session-1",
+      selectedAt: "2026-06-04T10:00:00.000Z",
+      selectedItems: [{ id: "frame-1", name: "Hero", type: "frame", path: "Screens/Hero" }],
     })
   })
 
