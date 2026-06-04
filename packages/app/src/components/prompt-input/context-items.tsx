@@ -100,7 +100,7 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                   </span>
                   <span class="break-all text-text-invert-base/80">{item.instanceUrl}</span>
                   <span class="text-text-invert-base/70">
-                    {item.mode} through {item.mcpName}
+                    {item.mode} through {item.mcpName} - {item.selectionSource ?? "manual"}
                   </span>
                   <Show when={item.writebackAllowed}>
                     <span class="text-text-invert-base/70">Writeback requires approval</span>

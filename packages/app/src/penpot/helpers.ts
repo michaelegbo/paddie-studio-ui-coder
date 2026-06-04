@@ -20,6 +20,41 @@ export type PenpotStyleSignals = {
   interactions: string[]
 }
 
+export type PenpotSelectionSource = "bridge" | "manual"
+
+export type PenpotSelectedItem = {
+  id: string
+  name: string
+  type: string
+  bounds?: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }
+  path?: string
+}
+
+export type PenpotSelection = {
+  instanceUrl: string
+  fileId: string
+  fileName?: string
+  pageId: string
+  pageName?: string
+  items: PenpotSelectedItem[]
+  selectedAt: string
+}
+
+export type PenpotBridgeSession = {
+  id: string
+  pairingCode: string
+  bridgeToken?: string
+  status: "waiting" | "paired" | "expired" | "disconnected"
+  expiresAt: string
+  manifestUrl?: string
+  latestSelection?: PenpotSelection
+}
+
 export type PenpotDesignContextPayload = {
   instanceUrl: string
   fileId: string
@@ -34,6 +69,10 @@ export type PenpotDesignContextPayload = {
   assets: string[]
   tokens: Record<string, string>
   writebackAllowed: boolean
+  selectionSource?: PenpotSelectionSource
+  selectionId?: string
+  selectedAt?: string
+  selectedItems?: PenpotSelectedItem[]
   summary?: string
 }
 
@@ -147,6 +186,13 @@ export function parsePenpotFrames(value: string) {
     .filter((item, index, list) => list.findIndex((other) => other.id === item.id) === index)
 }
 
+export function penpotSelectionFrames(selection?: PenpotSelection) {
+  return (selection?.items ?? []).map((item) => ({
+    id: item.id,
+    name: item.name || item.id,
+  }))
+}
+
 export function createPenpotDesignContext(input: {
   instanceUrl: string
   fileId?: string
@@ -154,20 +200,25 @@ export function createPenpotDesignContext(input: {
   pageId?: string
   pageName?: string
   frames?: string
+  selection?: PenpotSelection
+  selectionSource?: PenpotSelectionSource
+  selectionId?: string
+  selectedAt?: string
   mode: PenpotDesignMode
   mcpName?: string
   writebackAllowed?: boolean
   summary?: string
 }): PenpotDesignContextPayload {
-  const frames = parsePenpotFrames(input.frames ?? "")
+  const selectedFrames = penpotSelectionFrames(input.selection)
+  const frames = selectedFrames.length ? selectedFrames : parsePenpotFrames(input.frames ?? "")
   const frameIds = frames.map((frame) => frame.id)
   const frameNames = frames.map((frame) => frame.name)
   return {
-    instanceUrl: normalizePenpotInstanceUrl(input.instanceUrl),
-    fileId: input.fileId?.trim() || "active Penpot file",
-    fileName: input.fileName?.trim() || undefined,
-    pageId: input.pageId?.trim() || "active Penpot page",
-    pageName: input.pageName?.trim() || undefined,
+    instanceUrl: normalizePenpotInstanceUrl(input.selection?.instanceUrl ?? input.instanceUrl),
+    fileId: input.selection?.fileId || input.fileId?.trim() || "active Penpot file",
+    fileName: input.selection?.fileName || input.fileName?.trim() || undefined,
+    pageId: input.selection?.pageId || input.pageId?.trim() || "active Penpot page",
+    pageName: input.selection?.pageName || input.pageName?.trim() || undefined,
     frameIds,
     frameNames,
     mode: input.mode,
@@ -176,6 +227,10 @@ export function createPenpotDesignContext(input: {
     assets: [],
     tokens: {},
     writebackAllowed: input.writebackAllowed === true,
+    selectionSource: input.selectionSource ?? (input.selection ? "bridge" : "manual"),
+    selectionId: input.selectionId?.trim() || undefined,
+    selectedAt: input.selectedAt || input.selection?.selectedAt,
+    selectedItems: input.selection?.items ?? [],
     summary: input.summary?.trim() || undefined,
   }
 }
@@ -201,17 +256,26 @@ export function formatPenpotDesignNote(item: PenpotDesignContextPayload) {
       })
     : ["- Active or currently selected Penpot frame(s)"]
   const tokenLines = Object.entries(item.tokens).map(([key, value]) => `- ${key}: ${value}`)
+  const selectedItemLines = (item.selectedItems ?? []).map((selected) => {
+    const path = selected.path ? `, path: ${selected.path}` : ""
+    return `- ${selected.name || selected.id} (${selected.type}, ${selected.id}${path})`
+  })
   const lines = [
     "The user attached Penpot design context for this task.",
     `Penpot instance: ${item.instanceUrl}`,
     `MCP server: ${item.mcpName}`,
     `File: ${item.fileName ? `${item.fileName} (${item.fileId})` : item.fileId}`,
     `Page: ${item.pageName ? `${item.pageName} (${item.pageId})` : item.pageId}`,
+    `Selection source: ${item.selectionSource ?? "manual"}`,
+    item.selectionId ? `Selection ID: ${item.selectionId}` : "",
+    item.selectedAt ? `Selected at: ${item.selectedAt}` : "",
     `Mode: ${item.mode}`,
     `Writeback allowed: ${item.writebackAllowed ? "yes, but ask for explicit approval before every Penpot write" : "no"}`,
     item.summary ? `User note: ${item.summary}` : "",
     "Selected frames:",
     ...frames,
+    selectedItemLines.length ? "Selected objects:" : "",
+    ...selectedItemLines,
     "",
     penpotMcpRuntimeInstruction(),
   ]

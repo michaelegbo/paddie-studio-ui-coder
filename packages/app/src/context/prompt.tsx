@@ -254,7 +254,7 @@ function contextItemKey(item: ContextItem) {
   if (item.type === "inspiration") return `${item.type}:${item.url}:${item.mode}:${item.selector ?? "page"}`
   if (item.type === "autopilot") return `${item.type}:${item.runID}`
   if (item.type === "penpot-design") {
-    return `${item.type}:${item.instanceUrl}:${item.mcpName}:${item.fileId}:${item.pageId}:${item.mode}:${item.frameIds.join(",") || item.frameNames.join(",") || "active"}:${item.writebackAllowed ? "write" : "read"}`
+    return `${item.type}:${item.instanceUrl}:${item.mcpName}:${item.fileId}:${item.pageId}:${item.mode}:${item.selectionSource ?? "manual"}:${item.selectionId ?? "manual"}:${item.frameIds.join(",") || item.frameNames.join(",") || "active"}:${item.writebackAllowed ? "write" : "read"}`
   }
   if (item.type === "memory") return `${item.type}:${item.userID}:${item.mode}:${item.query ?? item.label}`
   if (item.type === "knowledge-base") return `${item.type}:${item.knowledgeBaseID}:${item.mode}:${item.query ?? item.label}`

@@ -8,6 +8,7 @@ import {
   handleNotificationClick,
   loadLocaleDict,
   normalizeLocale,
+  type DOMRectLike,
   type Locale,
   type Platform,
   PlatformProvider,
@@ -15,7 +16,9 @@ import {
   useCommand,
 } from "@opencode-ai/app"
 import { convertFileSrc } from "@tauri-apps/api/core"
+import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi"
 import type { AsyncStorage } from "@solid-primitives/storage"
+import { Webview } from "@tauri-apps/api/webview"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { readImage } from "@tauri-apps/plugin-clipboard-manager"
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link"
@@ -87,6 +90,13 @@ const parent = (path: string) => {
   return trim.slice(0, index)
 }
 
+type EmbeddedWebviewState = {
+  view: Webview
+  url: string
+  bounds: DOMRectLike
+  visible: boolean
+}
+
 const createPlatform = (): Platform => {
   const os = (() => {
     const type = ostype()
@@ -115,6 +125,62 @@ const createPlatform = (): Platform => {
   const guest = async (paths: string[]) => {
     if (os !== "windows" || !window.__OPENCODE__?.wsl) return paths
     return Promise.all(paths.map((path) => commands.wslPath(path, "linux").catch(() => path)))
+  }
+
+  const embeddedWebviews = new Map<string, EmbeddedWebviewState>()
+  const normalizeBounds = (bounds: DOMRectLike) => ({
+    x: Math.max(0, Math.round(bounds.x)),
+    y: Math.max(0, Math.round(bounds.y)),
+    width: Math.max(1, Math.round(bounds.width)),
+    height: Math.max(1, Math.round(bounds.height)),
+  })
+
+  const applyEmbeddedBounds = async (state: EmbeddedWebviewState, bounds: DOMRectLike) => {
+    const next = normalizeBounds(bounds)
+    state.bounds = next
+    await state.view.setPosition(new LogicalPosition(next.x, next.y)).catch(() => undefined)
+    await state.view.setSize(new LogicalSize(next.width, next.height)).catch(() => undefined)
+  }
+
+  const waitForEmbeddedWebview = (view: Webview) =>
+    new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(resolve, 3000)
+      const done = () => {
+        window.clearTimeout(timer)
+        resolve()
+      }
+      void view.once("tauri://created", done).catch(() => undefined)
+      void view.once("tauri://error", (event) => {
+        window.clearTimeout(timer)
+        reject(new Error(String(event.payload ?? "Could not create embedded webview.")))
+      }).catch(() => undefined)
+    })
+
+  const openEmbeddedWebview = async (input: { id: string; url: string; bounds: DOMRectLike; visible: boolean; force?: boolean }) => {
+    const current = embeddedWebviews.get(input.id)
+    if (!input.force && current?.url === input.url) {
+      await applyEmbeddedBounds(current, input.bounds)
+      current.visible = input.visible
+      await (input.visible ? current.view.show() : current.view.hide()).catch(() => undefined)
+      return
+    }
+
+    if (current) await current.view.close().catch(() => undefined)
+    const bounds = normalizeBounds(input.bounds)
+    const view = new Webview(getCurrentWindow(), input.id, {
+      url: input.url,
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      focus: false,
+      dragDropEnabled: false,
+      dataDirectory: `paddie-${input.id}`,
+    })
+    const state = { view, url: input.url, bounds, visible: input.visible }
+    embeddedWebviews.set(input.id, state)
+    await waitForEmbeddedWebview(view).catch(() => undefined)
+    await (input.visible ? view.show() : view.hide()).catch(() => undefined)
   }
 
   return {
@@ -443,6 +509,42 @@ const createPlatform = (): Platform => {
     parseMarkdown: (markdown: string) => commands.parseMarkdownCommand(markdown),
 
     webviewZoom,
+
+    embeddedWebview: {
+      open: openEmbeddedWebview,
+      async setBounds(id, bounds) {
+        const current = embeddedWebviews.get(id)
+        if (!current) return
+        await applyEmbeddedBounds(current, bounds)
+      },
+      async setVisible(id, visible) {
+        const current = embeddedWebviews.get(id)
+        if (!current) return
+        current.visible = visible
+        await (visible ? current.view.show() : current.view.hide()).catch(() => undefined)
+      },
+      async navigate(id, url) {
+        const current = embeddedWebviews.get(id)
+        if (!current) return
+        await openEmbeddedWebview({ id, url, bounds: current.bounds, visible: current.visible })
+      },
+      async reload(id) {
+        const current = embeddedWebviews.get(id)
+        if (!current) return
+        await openEmbeddedWebview({ id, url: current.url, bounds: current.bounds, visible: current.visible, force: true })
+      },
+      async focus(id) {
+        const current = embeddedWebviews.get(id)
+        if (!current) return
+        await current.view.setFocus().catch(() => undefined)
+      },
+      async close(id) {
+        const current = embeddedWebviews.get(id)
+        if (!current) return
+        embeddedWebviews.delete(id)
+        await current.view.close().catch(() => undefined)
+      },
+    },
 
     checkAppExists: async (appName: string) => {
       return commands.checkAppExists(appName)
