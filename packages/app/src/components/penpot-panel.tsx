@@ -56,6 +56,7 @@ export function PenpotPanel(props: {
   const [registeredAt, setRegisteredAt] = createSignal("")
   const [registrationError, setRegistrationError] = createSignal("")
   const [workspaceError, setWorkspaceError] = createSignal("")
+  const [workspaceActive, setWorkspaceActive] = createSignal(false)
   const [bridgeSession, setBridgeSession] = createSignal<PenpotBridgeSession>()
   const [bridgeError, setBridgeError] = createSignal("")
 
@@ -156,15 +157,19 @@ export function PenpotPanel(props: {
       if (!lastWorkspaceUrl) {
         await api.open({ id: PENPOT_WEBVIEW_ID, url: previewUrl(), bounds, visible })
         lastWorkspaceUrl = previewUrl()
+        setWorkspaceActive(true)
         return
       }
       if (lastWorkspaceUrl !== previewUrl()) {
+        setWorkspaceActive(false)
         await api.navigate(PENPOT_WEBVIEW_ID, previewUrl())
         lastWorkspaceUrl = previewUrl()
       }
       await api.setBounds(PENPOT_WEBVIEW_ID, bounds)
       await api.setVisible(PENPOT_WEBVIEW_ID, visible)
+      setWorkspaceActive(true)
     } catch (err) {
+      setWorkspaceActive(false)
       setWorkspaceError(err instanceof Error ? err.message : String(err))
     }
   }
@@ -172,14 +177,22 @@ export function PenpotPanel(props: {
   const reloadWorkspace = async () => {
     const api = platform.embeddedWebview
     if (!api) return openPenpot()
-    await api.reload(PENPOT_WEBVIEW_ID).catch((err) => setWorkspaceError(err instanceof Error ? err.message : String(err)))
+    setWorkspaceActive(false)
+    await api
+      .reload(PENPOT_WEBVIEW_ID)
+      .then(() => setWorkspaceActive(true))
+      .catch((err) => setWorkspaceError(err instanceof Error ? err.message : String(err)))
   }
 
   const resetWorkspace = async () => {
     const api = platform.embeddedWebview
     if (!api) return openPenpot()
     lastWorkspaceUrl = previewUrl()
-    await api.navigate(PENPOT_WEBVIEW_ID, previewUrl()).catch((err) => setWorkspaceError(err instanceof Error ? err.message : String(err)))
+    setWorkspaceActive(false)
+    await api
+      .navigate(PENPOT_WEBVIEW_ID, previewUrl())
+      .then(() => setWorkspaceActive(true))
+      .catch((err) => setWorkspaceError(err instanceof Error ? err.message : String(err)))
   }
 
   onMount(() => {
@@ -389,11 +402,13 @@ export function PenpotPanel(props: {
             <Show
               when={!embeddedAvailable()}
               fallback={
-                <div class="flex h-full items-center justify-center border-r border-border-weaker-base bg-background-stronger text-12-medium text-text-weak">
-                  <Show when={workspaceError()} fallback={<span>Loading Penpot workspace...</span>}>
-                    {(message) => <span class="max-w-md text-center text-red-300">{message()}</span>}
-                  </Show>
-                </div>
+                <Show when={workspaceError() || !workspaceActive()}>
+                  <div class="flex h-full items-center justify-center border-r border-border-weaker-base bg-background-stronger text-12-medium text-text-weak">
+                    <Show when={workspaceError()} fallback={<span>Loading Penpot workspace...</span>}>
+                      {(message) => <span class="max-w-md text-center text-red-300">{message()}</span>}
+                    </Show>
+                  </div>
+                </Show>
               }
             >
               <div class="flex h-full flex-col items-center justify-center gap-3 border-r border-border-weaker-base bg-background-stronger px-6 text-center">
