@@ -376,13 +376,13 @@ export function Titlebar() {
             <Tooltip placement="bottom" value="Studio" openDelay={2000}>
               <Button
                 variant="ghost"
-                class="hidden xl:inline-flex titlebar-icon h-6 px-2 gap-1.5 box-border items-center shrink-0 mr-2"
+                class="inline-flex titlebar-icon h-6 px-2 gap-1.5 box-border items-center shrink-0 mr-2"
                 onClick={openStudio}
                 aria-label="Studio"
                 aria-current={workbench() || studio() ? "page" : undefined}
               >
-                <Icon size="small" name="code" />
-                <span class="text-xs font-medium leading-none">Studio</span>
+                <Icon size="small" name="layout-right-full" />
+                <span class="hidden xl:inline text-xs font-medium leading-none">Studio</span>
               </Button>
             </Tooltip>
           </Show>

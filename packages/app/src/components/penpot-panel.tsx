@@ -59,6 +59,8 @@ export function PenpotPanel(props: {
   const [workspaceActive, setWorkspaceActive] = createSignal(false)
   const [bridgeSession, setBridgeSession] = createSignal<PenpotBridgeSession>()
   const [bridgeError, setBridgeError] = createSignal("")
+  const [detailsOpen, setDetailsOpen] = createSignal(false)
+  const [workspaceSlotReady, setWorkspaceSlotReady] = createSignal(0)
 
   const mcpStatus = createMemo(() => sync.data.mcp[mcpName().trim()]?.status)
   const connected = createMemo(() => mcpStatus() === "connected" || !!registeredAt())
@@ -95,6 +97,12 @@ export function PenpotPanel(props: {
   const bridgeManifestUrl = createMemo(
     () => bridgeSession()?.manifestUrl ?? "https://api.paddie.io/api/studio/penpot-bridge/manifest.json",
   )
+  const workspaceStatus = createMemo(() => {
+    if (!embeddedAvailable()) return "External only"
+    if (workspaceError()) return "Error"
+    if (workspaceActive()) return "Embedded"
+    return "Loading"
+  })
 
   const openPenpot = () => platform.openLink(previewUrl())
   const showSetup = () =>
@@ -155,15 +163,27 @@ export function PenpotPanel(props: {
     setWorkspaceError("")
     try {
       if (!lastWorkspaceUrl) {
-        await api.open({ id: PENPOT_WEBVIEW_ID, url: previewUrl(), bounds, visible })
-        lastWorkspaceUrl = previewUrl()
+        const url = previewUrl()
+        lastWorkspaceUrl = url
         setWorkspaceActive(true)
+        void api.open({ id: PENPOT_WEBVIEW_ID, url, bounds, visible }).catch((err) => {
+          if (lastWorkspaceUrl !== url) return
+          lastWorkspaceUrl = ""
+          setWorkspaceActive(false)
+          setWorkspaceError(err instanceof Error ? err.message : String(err))
+        })
         return
       }
       if (lastWorkspaceUrl !== previewUrl()) {
+        const url = previewUrl()
         setWorkspaceActive(false)
-        await api.navigate(PENPOT_WEBVIEW_ID, previewUrl())
-        lastWorkspaceUrl = previewUrl()
+        lastWorkspaceUrl = url
+        void api.navigate(PENPOT_WEBVIEW_ID, url).catch((err) => {
+          if (lastWorkspaceUrl !== url) return
+          lastWorkspaceUrl = ""
+          setWorkspaceActive(false)
+          setWorkspaceError(err instanceof Error ? err.message : String(err))
+        })
       }
       await api.setBounds(PENPOT_WEBVIEW_ID, bounds)
       await api.setVisible(PENPOT_WEBVIEW_ID, visible)
@@ -177,22 +197,40 @@ export function PenpotPanel(props: {
   const reloadWorkspace = async () => {
     const api = platform.embeddedWebview
     if (!api) return openPenpot()
+    const needsOpen = !lastWorkspaceUrl || !!workspaceError()
     setWorkspaceActive(false)
+    setWorkspaceError("")
+    if (needsOpen) {
+      lastWorkspaceUrl = ""
+      await syncWorkspace(true)
+      return
+    }
     await api
       .reload(PENPOT_WEBVIEW_ID)
       .then(() => setWorkspaceActive(true))
-      .catch((err) => setWorkspaceError(err instanceof Error ? err.message : String(err)))
+      .catch((err) => {
+        lastWorkspaceUrl = ""
+        setWorkspaceError(err instanceof Error ? err.message : String(err))
+      })
   }
 
   const resetWorkspace = async () => {
     const api = platform.embeddedWebview
     if (!api) return openPenpot()
+    if (!workspaceActive()) {
+      lastWorkspaceUrl = ""
+      await syncWorkspace(true)
+      return
+    }
     lastWorkspaceUrl = previewUrl()
     setWorkspaceActive(false)
     await api
       .navigate(PENPOT_WEBVIEW_ID, previewUrl())
       .then(() => setWorkspaceActive(true))
-      .catch((err) => setWorkspaceError(err instanceof Error ? err.message : String(err)))
+      .catch((err) => {
+        lastWorkspaceUrl = ""
+        setWorkspaceError(err instanceof Error ? err.message : String(err))
+      })
   }
 
   onMount(() => {
@@ -200,10 +238,14 @@ export function PenpotPanel(props: {
     const observer = new ResizeObserver(() => void syncWorkspace(true))
     if (workspaceSlot) observer.observe(workspaceSlot)
     const onResize = () => void syncWorkspace(true)
+    const retry = window.setInterval(() => {
+      if (!workspaceActive() || lastWorkspaceUrl !== previewUrl()) void syncWorkspace(true)
+    }, 1000)
     window.addEventListener("resize", onResize)
     window.addEventListener("scroll", onResize, true)
     requestAnimationFrame(() => void syncWorkspace(true))
     onCleanup(() => {
+      window.clearInterval(retry)
       observer.disconnect()
       window.removeEventListener("resize", onResize)
       window.removeEventListener("scroll", onResize, true)
@@ -217,6 +259,18 @@ export function PenpotPanel(props: {
     requestAnimationFrame(() => {
       if (url !== lastWorkspaceUrl) void syncWorkspace(true)
     })
+  })
+
+  createEffect(() => {
+    platform.webviewZoom?.()
+    if (!embeddedAvailable()) return
+    requestAnimationFrame(() => void syncWorkspace(true))
+  })
+
+  createEffect(() => {
+    workspaceSlotReady()
+    if (!embeddedAvailable()) return
+    requestAnimationFrame(() => void syncWorkspace(true))
   })
 
   const register = useMutation(() => ({
@@ -378,6 +432,9 @@ export function PenpotPanel(props: {
         <Button type="button" variant="ghost" class="h-8 px-3 text-11-medium" onClick={showSetup}>
           Setup MCP
         </Button>
+        <Button type="button" variant="ghost" class="h-8 px-3 text-11-medium" onClick={() => setDetailsOpen(!detailsOpen())}>
+          {detailsOpen() ? "Hide details" : "Selection details"}
+        </Button>
         <span class="mx-1 h-5 w-px bg-border-weaker-base" />
         <Button type="button" class="h-8 px-3 text-11-medium" onClick={() => attach("chat")}>
           Attach selected
@@ -396,92 +453,51 @@ export function PenpotPanel(props: {
         </Button>
       </div>
 
-      <div class="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px] gap-0">
-        <div class="relative min-h-0 bg-background-stronger">
-          <div ref={workspaceSlot} class="absolute inset-0">
-            <Show
-              when={!embeddedAvailable()}
-              fallback={
-                <Show when={workspaceError() || !workspaceActive()}>
-                  <div class="flex h-full items-center justify-center border-r border-border-weaker-base bg-background-stronger text-12-medium text-text-weak">
-                    <Show when={workspaceError()} fallback={<span>Loading Penpot workspace...</span>}>
-                      {(message) => <span class="max-w-md text-center text-red-300">{message()}</span>}
-                    </Show>
-                  </div>
-                </Show>
-              }
-            >
-              <div class="flex h-full flex-col items-center justify-center gap-3 border-r border-border-weaker-base bg-background-stronger px-6 text-center">
-                <div class="text-14-medium text-text-base">Embedded Penpot is available in Paddie Studio desktop.</div>
-                <div class="max-w-md text-12-medium leading-5 text-text-weak">
-                  This build cannot iframe Penpot because the production Penpot site blocks cross-origin embedding. Open the same workspace externally, then use MCP and the bridge here.
-                </div>
-                <Button type="button" class="h-9 px-4 text-12-medium" onClick={openPenpot}>
-                  Open Penpot
-                </Button>
-              </div>
-            </Show>
-          </div>
+      <div class="flex shrink-0 flex-wrap items-center gap-3 border-b border-border-weaker-base bg-surface-base px-3 py-2 text-11-medium text-text-weak">
+        <div class="flex min-w-0 items-center gap-2">
+          <span class="text-text-base">Penpot</span>
+          <span class="max-w-[280px] truncate">{previewUrl()}</span>
+          <span
+            classList={{
+              "size-2 shrink-0 rounded-full": true,
+              "bg-icon-success-base": connected(),
+              "bg-icon-danger-base": mcpStatus() === "failed",
+              "bg-border-strong-base": !connected() && mcpStatus() !== "failed",
+            }}
+          />
         </div>
+        <span>MCP <span class="text-text-base">{connectionStatus()}</span></span>
+        <span>Workspace <span class="text-text-base">{workspaceStatus()}</span></span>
+        <span>Bridge <span class="text-text-base">{bridgeStatus()}</span></span>
+        <span>Selection <span class="text-text-base">{selectionCount() || "Manual"}</span></span>
+        <span>Writeback <span class="text-text-base">Approval gated</span></span>
+        <div class="ml-auto flex flex-wrap gap-2">
+          <Button type="button" class="h-7 px-3 text-11-medium" disabled={createBridgeSession.isPending} onClick={() => createBridgeSession.mutate()}>
+            Start bridge
+          </Button>
+          <Button type="button" variant="ghost" class="h-7 px-3 text-11-medium" onClick={() => void copyBridgeDetails()}>
+            Copy pairing
+          </Button>
+        </div>
+      </div>
 
-        <aside class="min-h-0 overflow-auto border-l border-border-weaker-base bg-surface-base p-4">
-          <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
-              <div class="text-15-medium text-text-base">Penpot</div>
-              <div class="mt-1 truncate text-12-medium text-text-weak">{previewUrl()}</div>
-            </div>
-            <div
-              classList={{
-                "mt-1 size-2 shrink-0 rounded-full": true,
-                "bg-icon-success-base": connected(),
-                "bg-icon-danger-base": mcpStatus() === "failed",
-                "bg-border-strong-base": !connected() && mcpStatus() !== "failed",
-              }}
-            />
+      <Show when={bridgeError()}>
+        {(message) => <div class="shrink-0 border-b border-red-500/30 bg-red-500/10 px-3 py-2 text-11-medium text-red-200">{message()}</div>}
+      </Show>
+      <Show when={bridgeSession()}>
+        {(session) => (
+          <div class="flex shrink-0 flex-wrap gap-x-4 gap-y-1 border-b border-border-weaker-base bg-background-stronger px-3 py-2 text-11-medium leading-5 text-text-weak">
+            <div>Pairing code: <span class="text-text-base">{session().pairingCode}</span></div>
+            <div class="break-all">Session: {session().id}</div>
+            <div>Expires: {new Date(session().expiresAt).toLocaleTimeString()}</div>
           </div>
+        )}
+      </Show>
 
-          <div class="mt-4 grid gap-2 text-11-medium leading-5 text-text-weak">
-            <div class="flex items-center justify-between gap-3">
-              <span>MCP</span>
-              <span class="text-text-base">{connectionStatus()}</span>
-            </div>
-            <div class="flex items-center justify-between gap-3">
-              <span>Bridge</span>
-              <span class="text-text-base">{bridgeStatus()}</span>
-            </div>
-            <div class="flex items-center justify-between gap-3">
-              <span>Selection</span>
-              <span class="text-text-base">{selectionCount() || "Manual"}</span>
-            </div>
-            <div class="flex items-center justify-between gap-3">
-              <span>Writeback</span>
-              <span class="text-text-base">Approval gated</span>
-            </div>
-          </div>
-
-          <div class="mt-4 grid grid-cols-2 gap-2">
-            <Button type="button" class="h-8 justify-center text-11-medium" disabled={createBridgeSession.isPending} onClick={() => createBridgeSession.mutate()}>
-              Start bridge
-            </Button>
-            <Button type="button" variant="ghost" class="h-8 justify-center text-11-medium" onClick={() => void copyBridgeDetails()}>
-              Copy pairing
-            </Button>
-          </div>
-          <Show when={bridgeError()}>
-            {(message) => <div class="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-11-medium text-red-200">{message()}</div>}
-          </Show>
-          <Show when={bridgeSession()}>
-            {(session) => (
-              <div class="mt-3 rounded-lg border border-border-weaker-base bg-background-stronger p-3 text-11-medium leading-5 text-text-weak">
-                <div>Pairing code: <span class="text-text-base">{session().pairingCode}</span></div>
-                <div class="break-all">Session: {session().id}</div>
-                <div>Expires: {new Date(session().expiresAt).toLocaleTimeString()}</div>
-              </div>
-            )}
-          </Show>
-
-          <div class="mt-5 border-t border-border-weaker-base pt-4">
-            <div class="text-13-medium text-text-base">Live selection</div>
+      <Show when={detailsOpen()}>
+        <div class="grid max-h-[340px] shrink-0 gap-4 overflow-auto border-b border-border-weaker-base bg-surface-base p-4 lg:grid-cols-[minmax(260px,1fr)_minmax(320px,1.2fr)_minmax(260px,1fr)]">
+          <div>
+            <div class="text-13-medium text-text-base">Live Selection</div>
             <Show
               when={activeSelection()}
               fallback={<div class="mt-2 text-11-medium leading-5 text-text-weak">Pair the bridge plugin or enter file/page/frame details manually below.</div>}
@@ -505,8 +521,8 @@ export function PenpotPanel(props: {
             </Show>
           </div>
 
-          <div class="mt-5 border-t border-border-weaker-base pt-4">
-            <div class="text-13-medium text-text-base">Manual fallback</div>
+          <div>
+            <div class="text-13-medium text-text-base">Manual Fallback</div>
             <div class="mt-3 grid grid-cols-2 gap-2">
               <label class="block">
                 <span class="text-11-medium text-text-weak">File ID</span>
@@ -535,7 +551,7 @@ export function PenpotPanel(props: {
             </label>
           </div>
 
-          <div class="mt-5 border-t border-border-weaker-base pt-4">
+          <div>
             <div class="text-13-medium text-text-base">Penbots</div>
             <div class="mt-3 space-y-2">
               <For each={penbotPresets}>
@@ -559,7 +575,56 @@ export function PenpotPanel(props: {
               </For>
             </div>
           </div>
-        </aside>
+        </div>
+      </Show>
+
+      <div class="relative min-h-[520px] flex-1 bg-background-stronger">
+        <div
+          ref={(node) => {
+            workspaceSlot = node
+            setWorkspaceSlotReady((value) => value + 1)
+            requestAnimationFrame(() => void syncWorkspace(true))
+          }}
+          class="absolute inset-0"
+        >
+          <Show
+            when={!embeddedAvailable()}
+            fallback={
+              <Show when={workspaceError() || !workspaceActive()}>
+                <div class="flex h-full items-center justify-center bg-background-stronger px-6 text-center text-12-medium text-text-weak">
+                  <Show when={workspaceError()} fallback={<span>Loading Penpot workspace...</span>}>
+                    {(message) => (
+                      <div class="flex max-w-md flex-col items-center gap-3">
+                        <div>
+                          <div class="text-14-medium text-red-200">Penpot workspace failed to open.</div>
+                          <div class="mt-2 leading-5 text-red-300">{message()}</div>
+                        </div>
+                        <div class="flex flex-wrap justify-center gap-2">
+                          <Button type="button" class="h-8 px-3 text-11-medium" onClick={() => void reloadWorkspace()}>
+                            Retry embed
+                          </Button>
+                          <Button type="button" variant="ghost" class="h-8 px-3 text-11-medium" onClick={openPenpot}>
+                            Open external
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </Show>
+                </div>
+              </Show>
+            }
+          >
+            <div class="flex h-full flex-col items-center justify-center gap-3 bg-background-stronger px-6 text-center">
+              <div class="text-14-medium text-text-base">Embedded Penpot is available in Paddie Studio desktop.</div>
+              <div class="max-w-md text-12-medium leading-5 text-text-weak">
+                This build cannot iframe Penpot because the production Penpot site blocks cross-origin embedding. Open the same workspace externally, then use MCP and the bridge here.
+              </div>
+              <Button type="button" class="h-9 px-4 text-12-medium" onClick={openPenpot}>
+                Open Penpot
+              </Button>
+            </div>
+          </Show>
+        </div>
       </div>
     </div>
   )
