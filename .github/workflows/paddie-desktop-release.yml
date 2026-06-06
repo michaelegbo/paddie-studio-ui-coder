@@ -357,6 +357,7 @@ jobs:
           VITE_OPENCODE_CHANNEL: prod
           RUST_TARGET: x86_64-unknown-linux-gnu
           TAURI_ENV_TARGET_TRIPLE: x86_64-unknown-linux-gnu
+          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
           bun run --cwd packages/desktop tauri build \
             --target x86_64-unknown-linux-gnu \
