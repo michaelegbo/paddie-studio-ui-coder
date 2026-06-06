@@ -315,6 +315,7 @@ jobs:
             librsvg2-dev \
             patchelf \
             rpm
+          sudo apt-get install -y --no-install-recommends libfuse2t64 || sudo apt-get install -y --no-install-recommends libfuse2
 
       - name: Validate updater signing secrets
         run: |
