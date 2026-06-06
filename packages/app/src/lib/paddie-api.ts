@@ -31,6 +31,9 @@ export class UpgradeRequiredError extends Error {
   limit?: number
   current?: number
   upgrade_url?: string
+  billing_required?: boolean
+  trial_required?: boolean
+  trial_expired?: boolean
   constructor(
     required:
       | string
@@ -43,6 +46,9 @@ export class UpgradeRequiredError extends Error {
           limit?: number
           current?: number
           upgrade_url?: string
+          billing_required?: boolean
+          trial_required?: boolean
+          trial_expired?: boolean
         },
     current?: string,
   ) {
@@ -56,6 +62,9 @@ export class UpgradeRequiredError extends Error {
     this.limit = payload.limit
     this.current = payload.current
     this.upgrade_url = payload.upgrade_url
+    this.billing_required = payload.billing_required
+    this.trial_required = payload.trial_required
+    this.trial_expired = payload.trial_expired
   }
 }
 
@@ -72,23 +81,69 @@ export const paddieApiErrorMessage = (err: unknown) => {
 
 export function paddieApiErrorFromResponse(status: number, body: unknown) {
   const data = body && typeof body === "object" ? (body as Record<string, unknown>) : {}
+  const blocker = data.blocker && typeof data.blocker === "object" ? (data.blocker as Record<string, unknown>) : {}
   if (status === 402 && data.upgrade_required) {
     return new UpgradeRequiredError({
-      message: typeof data.message === "string" ? data.message : typeof data.error === "string" ? data.error : "Upgrade required",
-      code: typeof data.code === "string" ? data.code : undefined,
-      required_tier: typeof data.required_tier === "string" ? data.required_tier : undefined,
-      current_tier: typeof data.current_tier === "string" ? data.current_tier : undefined,
+      message:
+        typeof data.message === "string"
+          ? data.message
+          : typeof data.error === "string"
+            ? data.error
+            : typeof blocker.message === "string"
+              ? blocker.message
+              : "Upgrade required",
+      code: typeof data.code === "string" ? data.code : typeof blocker.code === "string" ? blocker.code : undefined,
+      required_tier:
+        typeof data.required_tier === "string"
+          ? data.required_tier
+          : typeof blocker.required_tier === "string"
+            ? blocker.required_tier
+            : undefined,
+      current_tier:
+        typeof data.current_tier === "string"
+          ? data.current_tier
+          : typeof blocker.current_tier === "string"
+            ? blocker.current_tier
+            : undefined,
       current_plan:
         typeof data.current_plan === "string"
           ? data.current_plan
+          : typeof blocker.current_plan === "string"
+            ? blocker.current_plan
           : typeof data.current_tier === "string"
             ? data.current_tier
-            : typeof data.plan === "string"
-              ? data.plan
+            : typeof blocker.current_tier === "string"
+              ? blocker.current_tier
+              : typeof data.plan === "string"
+                ? data.plan
+                : undefined,
+      limit: typeof data.limit === "number" ? data.limit : typeof blocker.limit === "number" ? blocker.limit : undefined,
+      current:
+        typeof data.current === "number" ? data.current : typeof blocker.current === "number" ? blocker.current : undefined,
+      upgrade_url:
+        typeof data.upgrade_url === "string"
+          ? data.upgrade_url
+          : typeof blocker.upgrade_url === "string"
+            ? blocker.upgrade_url
             : undefined,
-      limit: typeof data.limit === "number" ? data.limit : undefined,
-      current: typeof data.current === "number" ? data.current : undefined,
-      upgrade_url: typeof data.upgrade_url === "string" ? data.upgrade_url : undefined,
+      billing_required:
+        typeof data.billing_required === "boolean"
+          ? data.billing_required
+          : typeof blocker.billing_required === "boolean"
+            ? blocker.billing_required
+            : undefined,
+      trial_required:
+        typeof data.trial_required === "boolean"
+          ? data.trial_required
+          : typeof blocker.trial_required === "boolean"
+            ? blocker.trial_required
+            : undefined,
+      trial_expired:
+        typeof data.trial_expired === "boolean"
+          ? data.trial_expired
+          : typeof blocker.trial_expired === "boolean"
+            ? blocker.trial_expired
+            : undefined,
     })
   }
   return new Error(

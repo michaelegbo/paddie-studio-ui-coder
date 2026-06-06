@@ -1,5 +1,6 @@
 import "@/index.css"
 import { render } from "solid-js/web"
+import { DialogProvider } from "@opencode-ai/ui/context/dialog"
 import { Route, StaticRouter } from "@solidjs/router"
 import { AuthProvider } from "@/context/auth"
 import { PlatformProvider, type Platform } from "@/context/platform"
@@ -36,11 +37,13 @@ render(
           <Route
             path="/:dir"
             component={() => (
-              <PromptProvider>
-                <main class="h-screen overflow-auto bg-background-base p-4">
-                  <PaddieDataPanel />
-                </main>
-              </PromptProvider>
+              <DialogProvider>
+                <PromptProvider>
+                  <main class="h-screen overflow-auto bg-background-base p-4">
+                    <PaddieDataPanel />
+                  </main>
+                </PromptProvider>
+              </DialogProvider>
             )}
           />
         </StaticRouter>

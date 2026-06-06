@@ -1,12 +1,17 @@
 import { Button } from "@opencode-ai/ui/button"
+import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { Dialog } from "@opencode-ai/ui/dialog"
 import { showToast } from "@opencode-ai/ui/toast"
 import { createEffect, createMemo, createSignal, For, Show, onCleanup, type JSX } from "solid-js"
 import { useAuth } from "@/context/auth"
 import { usePrompt } from "@/context/prompt"
 import { paddieApi, paddieApiErrorFromResponse, paddieApiErrorMessage } from "@/lib/paddie-api"
 import {
+  defaultPaddieDataLlmRuntime,
   knowledgeBaseID,
+  paddieDataPlaygroundImplementationCode,
   paddieMemoryLabel,
+  type PaddieDataLlmRuntimeConfig,
   type PaddieApiKey,
   type PaddieApiKeySecret,
   type PaddieKnowledgeBase,
@@ -59,6 +64,38 @@ type PlaygroundKnowledgeBaseStatus = {
   count: number
   items: unknown[]
 }
+
+type KnowledgeBaseSummary = {
+  id: string
+  name: string
+  documentCount?: number
+  chunkCount?: number
+}
+
+type PlaygroundAttachConfig = {
+  memoryService: boolean
+  knowledgeBaseMode: "none" | "selected" | "all"
+  knowledgeBaseIDs: string[]
+  paddieApiKeyEnv: string
+  paddieApiKey?: string
+  llm: PaddieDataLlmRuntimeConfig
+}
+
+const llmProviders: Array<{ value: PaddieDataLlmRuntimeConfig["provider"]; label: string; apiKeyEnv: string; model: string; baseUrlEnv?: string }> = [
+  { value: "openai", label: "OpenAI", apiKeyEnv: "OPENAI_API_KEY", model: "gpt-4.1-mini" },
+  { value: "anthropic", label: "Anthropic", apiKeyEnv: "ANTHROPIC_API_KEY", model: "claude-3-5-sonnet-latest" },
+  { value: "google", label: "Google Gemini", apiKeyEnv: "GOOGLE_GENERATIVE_AI_API_KEY", model: "gemini-1.5-pro" },
+  { value: "mistral", label: "Mistral", apiKeyEnv: "MISTRAL_API_KEY", model: "mistral-large-latest" },
+  { value: "groq", label: "Groq", apiKeyEnv: "GROQ_API_KEY", model: "llama-3.1-70b-versatile" },
+  { value: "cohere", label: "Cohere", apiKeyEnv: "COHERE_API_KEY", model: "command-r-plus" },
+  { value: "xai", label: "xAI", apiKeyEnv: "XAI_API_KEY", model: "grok-2-latest" },
+  { value: "azure-openai", label: "Azure OpenAI", apiKeyEnv: "AZURE_OPENAI_API_KEY", model: "gpt-4o-mini", baseUrlEnv: "AZURE_OPENAI_ENDPOINT" },
+  { value: "openrouter", label: "OpenRouter", apiKeyEnv: "OPENROUTER_API_KEY", model: "openai/gpt-4.1-mini", baseUrlEnv: "OPENROUTER_BASE_URL" },
+  { value: "custom", label: "Custom compatible API", apiKeyEnv: "LLM_API_KEY", model: "configured-chat-model", baseUrlEnv: "LLM_BASE_URL" },
+]
+
+const llmProviderDefaults = (provider: PaddieDataLlmRuntimeConfig["provider"]) =>
+  llmProviders.find((item) => item.value === provider) ?? llmProviders[0]
 
 const routerModes: Array<{ value: PlaygroundRouterMode; label: string; description: string }> = [
   { value: "conversation", label: "Conversation", description: "Retrieve context and store useful memory in the background." },
@@ -191,6 +228,7 @@ async function playgroundChat(data: {
 
 export function PaddiePlaygroundPanel(props: { chatHidden?: boolean; onChatToggle?: VoidFunction; openApiTab?: VoidFunction }) {
   const auth = useAuth()
+  const dialog = useDialog()
   const prompt = usePrompt()
   const [apiKeys, setApiKeys] = createSignal<PaddieApiKey[]>([])
   const [models, setModels] = createSignal<PlaygroundModel[]>([])
@@ -217,6 +255,7 @@ export function PaddiePlaygroundPanel(props: { chatHidden?: boolean; onChatToggl
   const [conversationID, setConversationID] = createSignal(newConversationID())
   const [loading, setLoading] = createSignal(false)
   const [regenerating, setRegenerating] = createSignal(false)
+  const [preparingAttachKey, setPreparingAttachKey] = createSignal(false)
   let abortController: AbortController | undefined
   let initialized = false
   let messagesEnd: HTMLDivElement | undefined
@@ -240,6 +279,17 @@ export function PaddiePlaygroundPanel(props: { chatHidden?: boolean; onChatToggl
   const selectedKnowledgeBases = createMemo(() =>
     knowledgeBases().filter((item) => selectedKnowledgeBaseIDs().includes(knowledgeBaseID(item))),
   )
+  const knowledgeBaseSummaries = () =>
+    knowledgeBases().flatMap((kb) => {
+      const id = knowledgeBaseID(kb)
+      if (!id) return []
+      return [{
+        id,
+        name: kb.name,
+        documentCount: kb.document_count,
+        chunkCount: kb.chunk_count,
+      }]
+    })
 
   const focusPrompt = () => {
     if (props.chatHidden) props.onChatToggle?.()
@@ -297,6 +347,34 @@ export function PaddiePlaygroundPanel(props: { chatHidden?: boolean; onChatToggl
       setError(err)
     } finally {
       setRegenerating(false)
+    }
+  }
+
+  const createAttachApiKey = async () => {
+    const secret = await paddieApi.post<PaddieApiKeySecret>("/users/me/api-keys", {
+      name: `Paddie Studio Playground ${new Date().toLocaleDateString()}`,
+    })
+    setRevealedApiKey(secret.apiKey)
+    setManualApiKey("")
+    await loadApiKeys()
+    setSelectedApiKeyID(secret.id)
+    return secret
+  }
+
+  const prepareAttachApiKey = async () => {
+    const currentKey = activeApiKey()
+    if (currentKey) {
+      return {
+        apiKey: currentKey,
+        keyName: selectedApiKey()?.name ?? "Manual Paddie API key",
+        keyPrefix: selectedApiKey()?.key_prefix,
+      }
+    }
+    const secret = await createAttachApiKey()
+    return {
+      apiKey: secret.apiKey,
+      keyName: secret.name,
+      keyPrefix: secret.key_prefix,
     }
   }
 
@@ -366,31 +444,36 @@ export function PaddiePlaygroundPanel(props: { chatHidden?: boolean; onChatToggl
     )
   }
 
-  const attachPlayground = () => {
+  const attachPlayground = (config: PlaygroundAttachConfig) => {
     const sampleQuery =
       input().trim() ||
       messages().slice().reverse().find((message) => message.role === "user")?.content.trim() ||
       "Integrate this Paddie Data Playground setup"
     const userIDStrategy =
       "Create or resolve a stable app-specific Paddie Memory user_id for each end user at runtime, persist the mapping in the app's auth profile, database, or local profile store, and pass that dynamic user_id on every Memory Router call."
-    const knowledgeBaseSummaries = selectedKnowledgeBases().map((kb) => ({
-      id: knowledgeBaseID(kb),
-      name: kb.name,
-      documentCount: kb.document_count,
-      chunkCount: kb.chunk_count,
-    }))
+    const allKnowledgeBases = knowledgeBaseSummaries()
+    const knowledgeBaseSummariesForContext = config.knowledgeBaseMode === "all"
+      ? allKnowledgeBases
+      : config.knowledgeBaseMode === "selected"
+        ? allKnowledgeBases.filter((kb) => config.knowledgeBaseIDs.includes(kb.id))
+        : []
     const note = [
       "Build the attached Paddie Data Playground configuration into the user's app as reusable runtime code.",
-      "Memory: call POST /memory/router with a dynamic per-user memory ID.",
-      mode() === "router"
+      config.memoryService
+        ? "Memory: call POST /memory/router with a dynamic per-user memory ID. Use it as an LLM tool/context provider, not as a static memory dump."
+        : "Memory: do not add Memory Router unless the user later asks for memory.",
+      config.memoryService && mode() === "router"
         ? `Default memory behavior: router mode ${routerMode()}${memoryType() ? ` with memory type hint ${memoryType()}` : ""}.`
-        : `Default memory behavior: manual memory search with ${strategy()} strategy${memoryType() ? ` and ${memoryType()} filter` : ""}.`,
-      knowledgeBaseSummaries.length
-        ? "Knowledge Base: query the selected knowledge bases by ID at runtime and render answers with citations/source snippets."
-        : "Knowledge Base: no KB is selected; load available knowledge bases or expose a selector when the implementation needs RAG.",
-      "API key: read PADDIE_API_KEY from server-side environment or secret storage.",
+        : config.memoryService
+          ? `Default memory behavior: manual memory search with ${strategy()} strategy${memoryType() ? ` and ${memoryType()} filter` : ""}.`
+          : "",
+      knowledgeBaseSummariesForContext.length
+        ? "Knowledge Base: query the selected knowledge bases by ID at runtime and pass retrieved chunks/citations into the LLM before rendering final answers."
+        : "Knowledge Base: no KB is attached; expose a selector or leave RAG disabled until the user configures a knowledge base.",
+      `Paddie API key: read ${config.paddieApiKeyEnv} from server-side environment or secret storage.`,
+      `LLM runtime: use ${config.llm.provider}, read its key from ${config.llm.apiKeyEnv}, and use ${config.llm.model || config.llm.modelEnv || "a configured chat model"}. The LLM should orchestrate Memory/RAG calls and compose the final answer.`,
       "Do not include the playground transcript, returned memories, source chunks, or API key value in generated app code.",
-    ]
+    ].filter(Boolean)
     if (userID().trim()) note.push(`Selected explorer user ID for testing only: ${userID().trim()}`)
     if (selectedModelID()) note.push(`Playground model used while testing: ${selectedModelID()}`)
     if (persona()) note.push(`Playground persona default: ${persona()}`)
@@ -399,7 +482,7 @@ export function PaddiePlaygroundPanel(props: { chatHidden?: boolean; onChatToggl
       type: "data-playground",
       label: "Paddie Data Playground",
       apiBase: apiBase(),
-      apiKeyEnv: "PADDIE_API_KEY",
+      apiKeyEnv: config.paddieApiKeyEnv,
       mode: mode(),
       userIDStrategy,
       selectedExplorerUserID: userID().trim() || undefined,
@@ -411,15 +494,58 @@ export function PaddiePlaygroundPanel(props: { chatHidden?: boolean; onChatToggl
       sampleQuery,
       conversationID: conversationID(),
       integrationNote: note.join("\n"),
-      knowledgeBases: knowledgeBaseSummaries,
+      implementationCode: paddieDataPlaygroundImplementationCode({
+        apiBase: apiBase(),
+        apiKeyEnv: config.paddieApiKeyEnv,
+        memoryService: config.memoryService,
+        memoryMode: mode(),
+        routerMode: mode() === "router" ? routerMode() : undefined,
+        strategy: mode() === "manual" ? strategy() : undefined,
+        memoryType: memoryType() || undefined,
+        llm: config.llm,
+        knowledgeBases: knowledgeBaseSummariesForContext,
+      }),
+      memoryService: config.memoryService,
+      knowledgeBaseMode: config.knowledgeBaseMode,
+      llm: config.llm,
+      knowledgeBases: knowledgeBaseSummariesForContext,
       metadata: {
         apiKeyID: selectedApiKeyID() || undefined,
+        apiKeyPrefix: selectedApiKey()?.key_prefix,
+        apiKeyName: selectedApiKey()?.name,
         selectedKnowledgeBaseIDs: selectedKnowledgeBaseIDs(),
+        attachedKnowledgeBaseIDs: knowledgeBaseSummariesForContext.map((kb) => kb.id),
+        llmProvider: config.llm.provider,
         service: "paddie-data-playground",
       },
     })
     focusPrompt()
     showToast({ title: "Playground added", description: "The agent will use this setup to build dynamic Memory/RAG integration code." })
+  }
+
+  const openAttachWizard = async () => {
+    setPreparingAttachKey(true)
+    setError(undefined)
+    let preparedApiKey: { apiKey: string; keyName: string; keyPrefix?: string } | undefined
+    try {
+      preparedApiKey = await prepareAttachApiKey()
+      showToast({ title: "Paddie API key ready", description: "The attach wizard can copy it into the target app environment." })
+    } catch (err) {
+      setError(err)
+      showToast({ title: "Could not prepare Paddie API key", description: paddieApiErrorMessage(err) })
+    } finally {
+      setPreparingAttachKey(false)
+    }
+
+    dialog.show(() => (
+      <DialogAttachPlayground
+        knowledgeBases={knowledgeBaseSummaries()}
+        selectedKnowledgeBaseIDs={selectedKnowledgeBaseIDs()}
+        playgroundModel={selectedModelID()}
+        preparedApiKey={preparedApiKey}
+        onConfirm={attachPlayground}
+      />
+    ))
   }
 
   const handlePlaygroundEvent = (
@@ -773,8 +899,8 @@ export function PaddiePlaygroundPanel(props: { chatHidden?: boolean; onChatToggl
         title="Chat Playground"
         action={
           <div class="flex items-center gap-2">
-            <Button variant="ghost" class="h-8 px-3 text-11-medium" onClick={attachPlayground}>
-              Attach playground
+            <Button variant="ghost" class="h-8 px-3 text-11-medium" disabled={preparingAttachKey()} onClick={() => void openAttachWizard()}>
+              {preparingAttachKey() ? "Preparing key..." : "Attach playground"}
             </Button>
             <Button variant="ghost" class="h-8 px-3 text-11-medium" disabled={loading()} onClick={() => void refresh()}>
               Refresh
@@ -944,6 +1070,230 @@ export function PaddiePlaygroundPanel(props: { chatHidden?: boolean; onChatToggl
         </Panel>
       </div>
     </div>
+  )
+}
+
+function DialogAttachPlayground(props: {
+  knowledgeBases: KnowledgeBaseSummary[]
+  selectedKnowledgeBaseIDs: string[]
+  playgroundModel: string
+  preparedApiKey?: { apiKey: string; keyName: string; keyPrefix?: string }
+  onConfirm: (config: PlaygroundAttachConfig) => void
+}) {
+  const dialog = useDialog()
+  const initialLlm = defaultPaddieDataLlmRuntime()
+  const [memoryService, setMemoryService] = createSignal(true)
+  const [knowledgeBaseMode, setKnowledgeBaseMode] = createSignal<PlaygroundAttachConfig["knowledgeBaseMode"]>(
+    props.selectedKnowledgeBaseIDs.length > 0 ? "selected" : props.knowledgeBases.length > 0 ? "all" : "none",
+  )
+  const [knowledgeBaseIDs, setKnowledgeBaseIDs] = createSignal(props.selectedKnowledgeBaseIDs)
+  const [paddieApiKeyEnv, setPaddieApiKeyEnv] = createSignal("PADDIE_API_KEY")
+  const [llmProvider, setLlmProvider] = createSignal<PaddieDataLlmRuntimeConfig["provider"]>(initialLlm.provider)
+  const [llmApiKeyEnv, setLlmApiKeyEnv] = createSignal(initialLlm.apiKeyEnv)
+  const [llmModel, setLlmModel] = createSignal(initialLlm.model ?? "")
+  const [llmBaseUrlEnv, setLlmBaseUrlEnv] = createSignal("")
+  const [showPaddieApiKey, setShowPaddieApiKey] = createSignal(true)
+
+  const canAttach = createMemo(() =>
+    memoryService() ||
+    knowledgeBaseMode() === "all" ||
+    (knowledgeBaseMode() === "selected" && knowledgeBaseIDs().length > 0),
+  )
+
+  const setProvider = (provider: PaddieDataLlmRuntimeConfig["provider"]) => {
+    const defaults = llmProviderDefaults(provider)
+    setLlmProvider(provider)
+    setLlmApiKeyEnv(defaults.apiKeyEnv)
+    setLlmModel(defaults.model)
+    setLlmBaseUrlEnv(defaults.baseUrlEnv ?? "")
+  }
+
+  const toggleKnowledgeBase = (id: string, checked: boolean) => {
+    setKnowledgeBaseIDs((current) =>
+      checked ? Array.from(new Set([...current, id])) : current.filter((item) => item !== id),
+    )
+  }
+
+  const copyPreparedPaddieApiKey = async () => {
+    if (!props.preparedApiKey?.apiKey) return
+    await navigator.clipboard?.writeText(props.preparedApiKey.apiKey)
+    showToast({ title: "Paddie API key copied" })
+  }
+
+  const confirm = () => {
+    const baseUrlEnv = llmBaseUrlEnv().trim()
+    props.onConfirm({
+      memoryService: memoryService(),
+      knowledgeBaseMode: knowledgeBaseMode(),
+      knowledgeBaseIDs: knowledgeBaseMode() === "all"
+        ? props.knowledgeBases.map((kb) => kb.id)
+        : knowledgeBaseMode() === "selected"
+          ? knowledgeBaseIDs()
+          : [],
+      paddieApiKeyEnv: paddieApiKeyEnv().trim() || "PADDIE_API_KEY",
+      paddieApiKey: props.preparedApiKey?.apiKey,
+      llm: {
+        provider: llmProvider(),
+        apiKeyEnv: llmApiKeyEnv().trim() || llmProviderDefaults(llmProvider()).apiKeyEnv,
+        model: llmModel().trim() || undefined,
+        baseUrlEnv: baseUrlEnv || undefined,
+      },
+    })
+    dialog.close()
+  }
+
+  return (
+    <Dialog
+      title="Attach Data Playground"
+      description="Choose the runtime services the coding agent should build into this app. Secrets stay as environment variable names."
+      size="large"
+      class="w-full max-w-[780px] mx-auto"
+      fit
+    >
+      <div class="space-y-4">
+        <section class="rounded-xl border border-border-weaker-base bg-background-stronger p-3">
+          <label class="flex items-start gap-3">
+            <input
+              type="checkbox"
+              class="mt-1"
+              checked={memoryService()}
+              onChange={(event) => setMemoryService(event.currentTarget.checked)}
+            />
+            <span>
+              <span class="block text-13-medium text-text-base">Attach Memory service</span>
+              <span class="mt-1 block text-12-medium text-text-weak">
+                The agent will create a dynamic per-user Memory Router integration. It will not attach individual memory records.
+              </span>
+            </span>
+          </label>
+        </section>
+
+        <section class="rounded-xl border border-border-weaker-base bg-background-stronger p-3">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="text-13-medium text-text-base">Attach Knowledge Base / graph RAG</div>
+              <div class="mt-1 text-12-medium text-text-weak">Select which knowledge bases the generated app can query at runtime.</div>
+            </div>
+            <select
+              class={`${inputClass} max-w-40`}
+              value={knowledgeBaseMode()}
+              onChange={(event) => setKnowledgeBaseMode(event.currentTarget.value as PlaygroundAttachConfig["knowledgeBaseMode"])}
+            >
+              <option value="selected">Selected</option>
+              <option value="all">All</option>
+              <option value="none">None</option>
+            </select>
+          </div>
+
+          <Show when={knowledgeBaseMode() === "selected"}>
+            <Show
+              when={props.knowledgeBases.length > 0}
+              fallback={<div class="mt-3 text-12-medium text-text-weak">No knowledge bases are available yet.</div>}
+            >
+              <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                <For each={props.knowledgeBases}>
+                  {(kb) => (
+                    <label class="flex cursor-pointer items-start gap-2 rounded-lg border border-border-weaker-base bg-background-base p-2">
+                      <input
+                        type="checkbox"
+                        class="mt-1"
+                        checked={knowledgeBaseIDs().includes(kb.id)}
+                        onChange={(event) => toggleKnowledgeBase(kb.id, event.currentTarget.checked)}
+                      />
+                      <span class="min-w-0">
+                        <span class="block truncate text-12-medium text-text-base">{kb.name}</span>
+                        <span class="text-11-medium text-text-weak">{kb.documentCount ?? 0} docs - {kb.chunkCount ?? 0} chunks</span>
+                      </span>
+                    </label>
+                  )}
+                </For>
+              </div>
+            </Show>
+          </Show>
+        </section>
+
+        <section class="rounded-xl border border-border-weaker-base bg-background-stronger p-3">
+          <div class="text-13-medium text-text-base">Runtime configuration</div>
+          <div class="mt-3 rounded-lg border border-border-weaker-base bg-background-base p-3">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div class="text-12-medium text-text-base">Paddie API key</div>
+                <div class="mt-1 text-12-medium text-text-weak">
+                  {props.preparedApiKey
+                    ? `${props.preparedApiKey.keyName}${props.preparedApiKey.keyPrefix ? ` (${props.preparedApiKey.keyPrefix})` : ""} is ready for the target app.`
+                    : "No Paddie API key was prepared. Create one in the API tab or retry after your plan allows API keys."}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                class="h-8 px-3 text-11-medium"
+                disabled={!props.preparedApiKey?.apiKey}
+                onClick={() => void copyPreparedPaddieApiKey()}
+              >
+                Copy key
+              </Button>
+            </div>
+            <Show when={props.preparedApiKey?.apiKey}>
+              <div class="mt-3 flex gap-2">
+                <input
+                  class={inputClass}
+                  readOnly
+                  type={showPaddieApiKey() ? "text" : "password"}
+                  value={props.preparedApiKey?.apiKey ?? ""}
+                />
+                <Button variant="ghost" class="h-10 px-3 text-11-medium" onClick={() => setShowPaddieApiKey((value) => !value)}>
+                  {showPaddieApiKey() ? "Hide" : "Reveal"}
+                </Button>
+              </div>
+            </Show>
+          </div>
+          <div class="mt-3 grid gap-3 sm:grid-cols-2">
+            <Field label="Paddie API env">
+              <input class={inputClass} value={paddieApiKeyEnv()} onInput={(event) => setPaddieApiKeyEnv(event.currentTarget.value)} />
+            </Field>
+            <Field label="LLM provider">
+              <select
+                class={inputClass}
+                value={llmProvider()}
+                onChange={(event) => setProvider(event.currentTarget.value as PaddieDataLlmRuntimeConfig["provider"])}
+              >
+                <For each={llmProviders}>
+                  {(provider) => <option value={provider.value}>{provider.label}</option>}
+                </For>
+              </select>
+            </Field>
+            <Field label="LLM key env">
+              <input class={inputClass} value={llmApiKeyEnv()} onInput={(event) => setLlmApiKeyEnv(event.currentTarget.value)} />
+            </Field>
+            <Field label="Default model">
+              <input
+                class={inputClass}
+                value={llmModel()}
+                onInput={(event) => setLlmModel(event.currentTarget.value)}
+                placeholder={props.playgroundModel || "gpt-4.1-mini"}
+              />
+            </Field>
+            <Show when={llmProviderDefaults(llmProvider()).baseUrlEnv}>
+              <Field label="Base URL env">
+                <input class={inputClass} value={llmBaseUrlEnv()} onInput={(event) => setLlmBaseUrlEnv(event.currentTarget.value)} />
+              </Field>
+            </Show>
+          </div>
+          <div class="mt-3 rounded-lg border border-border-weaker-base bg-background-base p-2 text-12-medium text-text-weak">
+            The generated app should call the LLM from trusted server code. Paddie Memory and Knowledge Base provide context; the LLM decides when to call them and writes the final response.
+          </div>
+        </section>
+
+        <div class="flex justify-end gap-2">
+          <Button variant="ghost" class="h-9 px-4 text-12-medium" onClick={() => dialog.close()}>
+            Cancel
+          </Button>
+          <Button class="h-9 px-4 text-12-medium" disabled={!canAttach()} onClick={confirm}>
+            Attach to chat
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   )
 }
 

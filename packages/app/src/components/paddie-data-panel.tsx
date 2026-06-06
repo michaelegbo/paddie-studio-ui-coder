@@ -6,8 +6,10 @@ import { useAuth } from "@/context/auth"
 import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
 import { paddieApi, paddieApiErrorMessage, UpgradeRequiredError } from "@/lib/paddie-api"
+import { studioBillingUrl, type StudioBillingSource } from "@/lib/paddie-links"
 import { PaddiePlaygroundPanel } from "@/components/paddie-playground-panel"
 import {
+  defaultPaddieDataLlmRuntime,
   fileToBase64,
   knowledgeBaseID,
   paddieMemoryLabel,
@@ -60,6 +62,8 @@ export function PaddieDataPanel(props: {
   const platform = usePlatform()
   const prompt = usePrompt()
   const [section, setSection] = createSignal<DataSection>("playground")
+  const openBilling = (source: StudioBillingSource, err?: unknown) =>
+    platform.openLink(studioBillingUrl({ source, upgradeUrl: err instanceof UpgradeRequiredError ? err.upgrade_url : undefined }))
 
   const [memoryUsers, setMemoryUsers] = createSignal<PaddieMemoryUser[]>([])
   const [memoryUserID, setMemoryUserID] = createSignal(auth.user()?.userId ?? "")
@@ -204,6 +208,7 @@ export function PaddieDataPanel(props: {
       "Endpoint: POST /memory/router",
       "API key: read PADDIE_API_KEY from trusted server-side environment or secret storage.",
       `User ID strategy: ${userIDStrategy}`,
+      "LLM runtime: add a server-side chat/model layer such as OpenAI or Anthropic. The LLM should call Memory Router as a tool/context provider, then compose the final response.",
       "Integration behavior: call Memory Router with mode=conversation for normal user interactions so RMN can retrieve relevant memory and store new memory when appropriate.",
       "Do not hardcode the Studio explorer user ID or embed individual memory records into the app. The explorer is only for inspection and testing.",
       "For client-only projects, create a backend route first; do not ship PADDIE_API_KEY in browser code.",
@@ -220,6 +225,7 @@ export function PaddieDataPanel(props: {
       apiBase: apiBase(),
       apiKeyEnv: "PADDIE_API_KEY",
       userIDStrategy,
+      llm: defaultPaddieDataLlmRuntime(),
       query,
       content: trimText(content.join("\n")),
       metadata: {
@@ -379,6 +385,7 @@ export function PaddieDataPanel(props: {
       scope === "all"
         ? "Knowledge base strategy: expose a runtime selector or configuration that can query any attached Paddie knowledge base by ID."
         : `Knowledge base strategy: wire runtime queries to ${kb?.name} (${selectedID}).`,
+      "LLM runtime: add a server-side chat/model layer such as OpenAI or Anthropic. The LLM should use retrieved KB chunks/citations as context before composing final answers.",
       "Integration behavior: call the Knowledge Base query endpoint at runtime with the user's question, then render the generated answer and citations/source snippets in the app.",
       "Do not embed this playground query result, source chunks, or uploaded document text as static app content.",
       "For client-only projects, create a backend route first; do not ship PADDIE_API_KEY in browser code.",
@@ -395,6 +402,7 @@ export function PaddieDataPanel(props: {
       apiKeyEnv: "PADDIE_API_KEY",
       endpoint,
       integrationNote,
+      llm: defaultPaddieDataLlmRuntime(),
       apiNote: detail?.curl,
       knowledgeBases: knowledgeBasesForContext,
     })
@@ -561,7 +569,7 @@ export function PaddieDataPanel(props: {
                   </For>
                 </div>
               </Show>
-              <ErrorNotice error={memoryError()} text={memoryErrorText()} openPlans={() => platform.openLink("https://paddie.io/pricing")} />
+              <ErrorNotice error={memoryError()} text={memoryErrorText()} openPlans={() => openBilling("data-memory", memoryError())} />
               <div class="mt-3 divide-y divide-border-weaker-base overflow-hidden rounded-xl border border-border-weaker-base">
                 <Show when={!memoryLoading()} fallback={<div class="p-4 text-12-medium text-text-weak">Loading memories...</div>}>
                   <Show when={(memories()?.items.length ?? 0) > 0} fallback={<div class="p-4 text-12-medium text-text-weak">No memories found for this user.</div>}>
@@ -625,7 +633,7 @@ export function PaddieDataPanel(props: {
                 </div>
               }
             >
-              <ErrorNotice error={kbError()} text={kbErrorText()} openPlans={() => platform.openLink("https://paddie.io/pricing")} />
+              <ErrorNotice error={kbError()} text={kbErrorText()} openPlans={() => openBilling("data-knowledge", kbError())} />
               <div class="space-y-2">
                 <For each={knowledgeBases()}>
                   {(kb) => {
@@ -725,7 +733,7 @@ export function PaddieDataPanel(props: {
         <Show when={section() === "api"}>
           <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
             <Panel title="API keys" action={<Button variant="ghost" class="h-8 px-3 text-11-medium" disabled={apiLoading()} onClick={() => void loadApiKeys()}>Refresh</Button>}>
-              <ErrorNotice error={apiError()} text={apiErrorText()} openPlans={() => platform.openLink("https://paddie.io/pricing")} />
+              <ErrorNotice error={apiError()} text={apiErrorText()} openPlans={() => openBilling("data-api", apiError())} />
               <div class="flex gap-2">
                 <input class={inputClass} value={apiKeyName()} onInput={(event) => setApiKeyName(event.currentTarget.value)} placeholder="API key name" />
                 <Button class="h-10 px-3 text-12-medium" disabled={!apiKeyName().trim() || apiLoading()} onClick={() => void createApiKey()}>

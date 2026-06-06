@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
   dataGoalNeedsPaddieSkill,
+  paddieDataPlaygroundImplementationCode,
+  paddieDataLlmRuntimeInstruction,
   knowledgeBaseID,
   paddieDataSkillInstruction,
   paddieMemoryLabel,
@@ -42,6 +44,40 @@ describe("paddie data helpers", () => {
     expect(instruction).toContain("RMN/Paddie APIs")
     expect(instruction).toContain("user IDs dynamically")
     expect(instruction).toContain("query selected knowledge bases at runtime")
+    expect(instruction).toContain("application LLM runtime")
     expect(instruction).toContain("do not pull unrelated tenant memory")
+  })
+
+  test("formats the LLM runtime contract without secret values", () => {
+    const instruction = paddieDataLlmRuntimeInstruction({
+      provider: "anthropic",
+      apiKeyEnv: "ANTHROPIC_API_KEY",
+      model: "claude-3-5-sonnet-latest",
+    })
+
+    expect(instruction).toContain("LLM runtime required")
+    expect(instruction).toContain("ANTHROPIC_API_KEY")
+    expect(instruction).toContain("Paddie Memory and Knowledge Base return memory/RAG context")
+    expect(instruction).toContain("Do not put LLM or Paddie API keys")
+  })
+
+  test("generates a portable playground implementation code pack", () => {
+    const code = paddieDataPlaygroundImplementationCode({
+      apiBase: "https://api.paddie.io/api",
+      apiKeyEnv: "PADDIE_API_KEY",
+      memoryService: true,
+      memoryMode: "router",
+      routerMode: "conversation",
+      memoryType: "preference",
+      llm: { provider: "openai", apiKeyEnv: "OPENAI_API_KEY", model: "gpt-4.1-mini" },
+      knowledgeBases: [{ id: "kb_1", name: "Onboarding", documentCount: 1, chunkCount: 12 }],
+    })
+
+    expect(code).toContain("File: src/lib/paddie-data.ts")
+    expect(code).toContain("File: src/app/api/paddie-playground/route.ts")
+    expect(code).toContain("File: src/components/PaddieDataPlayground.tsx")
+    expect(code).toContain("process.env[\"PADDIE_API_KEY\"]")
+    expect(code).toContain("process.env[\"OPENAI_API_KEY\"]")
+    expect(code).toContain("kb_1")
   })
 })
