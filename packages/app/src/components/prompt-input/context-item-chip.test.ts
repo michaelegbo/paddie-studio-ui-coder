@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { createDefaultDesignDocument, createPaddieDesignContext, designFrames } from "@/designer/helpers"
 import { contextItemChip } from "./context-item-chip"
 
 const styleSignals = {
@@ -75,28 +76,18 @@ describe("contextItemChip", () => {
     })
   })
 
-  test("labels Penpot design references by selected frames", () => {
+  test("labels Paddie Designer references by selected frames", () => {
+    const document = createDefaultDesignDocument("Landing design")
+    const frame = designFrames(document)[0]!
     expect(
       contextItemChip({
-        key: "penpot-design:https://penpot.paddie.io:penpot-production:file-1:page-1:website:hero:read",
-        type: "penpot-design",
-        instanceUrl: "https://penpot.paddie.io",
-        fileId: "file-1",
-        fileName: "Landing file",
-        pageId: "page-1",
-        pageName: "Marketing",
-        frameIds: ["hero"],
-        frameNames: ["Hero"],
-        mode: "website",
-        mcpName: "penpot-production",
-        styleSignals,
-        assets: [],
-        tokens: {},
-        writebackAllowed: false,
+        key: `paddie-design:${document.id}:${document.currentPageId}:website:${frame.id}:read`,
+        type: "paddie-design",
+        ...createPaddieDesignContext({ document, selectedIds: [frame.id], mode: "website" }),
       }),
     ).toMatchObject({
-      label: "Hero",
-      body: "website - 1 frame",
+      label: frame.name,
+      body: `website - ${frame.name}`,
       icon: "window-cursor",
     })
   })

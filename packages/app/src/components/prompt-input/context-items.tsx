@@ -93,17 +93,16 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                   <span class="break-all text-text-invert-base/80">{item.workspace}</span>
                   <span class="text-text-invert-base/70">{item.status}</span>
                 </div>
-              ) : item.type === "penpot-design" ? (
+              ) : item.type === "paddie-design" ? (
                 <div class="flex max-w-[320px] flex-col gap-1">
                   <span class="truncate text-text-invert-base">
-                    {item.frameNames.length ? item.frameNames.join(", ") : item.fileName ?? "Penpot design"}
+                    {item.frameNames.length ? item.frameNames.join(", ") : item.designName}
                   </span>
-                  <span class="break-all text-text-invert-base/80">{item.instanceUrl}</span>
                   <span class="text-text-invert-base/70">
-                    {item.mode} through {item.mcpName} - {item.selectionSource ?? "manual"}
+                    {item.mode} - {item.selectedElements.length} selected element{item.selectedElements.length === 1 ? "" : "s"}
                   </span>
                   <Show when={item.writebackAllowed}>
-                    <span class="text-text-invert-base/70">Writeback requires approval</span>
+                    <span class="text-text-invert-base/70">Design edits require approval</span>
                   </Show>
                 </div>
               ) : (
@@ -144,7 +143,7 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                       <Icon name="window-cursor" class="shrink-0 size-3.5 text-icon-info-base" />
                     ) : item.type === "autopilot" ? (
                       <Icon name="brain" class="shrink-0 size-3.5 text-icon-info-base" />
-                    ) : item.type === "penpot-design" ? (
+                    ) : item.type === "paddie-design" ? (
                       <Icon name="window-cursor" class="shrink-0 size-3.5 text-icon-info-base" />
                     ) : (
                       <Icon name="layout-right-full" class="shrink-0 size-3.5 text-icon-info-base" />

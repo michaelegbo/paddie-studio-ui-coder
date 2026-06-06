@@ -3,7 +3,6 @@ import {
   addAutopilotEvent,
   autopilotContextFromRun,
   autopilotGoalNeedsData,
-  autopilotGoalNeedsPenpot,
   autopilotGoalNeedsTemplate,
   autopilotGoalNeedsWorkflow,
   autopilotHandoffFromText,
@@ -41,6 +40,7 @@ import {
   transitionAutopilotRun,
   updateAutopilotTaskQueue,
 } from "./helpers"
+import { createDefaultDesignDocument, createPaddieDesignContext, designFrames } from "@/designer/helpers"
 
 describe("autopilot helpers", () => {
   test("normalizes goals and rejects empty input", () => {
@@ -191,67 +191,28 @@ describe("autopilot helpers", () => {
     expect(prompt).toContain("Generated javascript client code")
   })
 
-  test("adds attached Penpot design context to native prompts", () => {
+  test("adds attached Designer context to native prompts", () => {
     const run = autopilotContextFromRun(
       createAutopilotRun({
-        runID: "run-penpot",
+        runID: "run-designer",
         now: "2026-05-22T10:00:00.000Z",
-        goal: "Convert these Penpot frames into a responsive website",
+        goal: "Convert these Designer frames into a responsive website",
         workspace: "/repo",
       }),
     )
+    const document = createDefaultDesignDocument("Landing")
+    const frame = designFrames(document)[0]!
+    const context = createPaddieDesignContext({ document, selectedIds: [frame.id], mode: "website" })
     const resources = {
-      penpotAccess: "attached" as const,
-      penpotDesigns: [
-        {
-          instanceUrl: "https://penpot.paddie.io",
-          fileId: "file-1",
-          fileName: "Landing",
-          pageId: "page-1",
-          pageName: "Marketing",
-          frameIds: ["hero"],
-          frameNames: ["Hero"],
-          mode: "website" as const,
-          mcpName: "penpot-production",
-          styleSignals: {
-            colors: [],
-            typography: [],
-            layout: [],
-            components: [],
-            interactions: [],
-          },
-          assets: [],
-          tokens: {},
-          writebackAllowed: false,
-        },
-      ],
-      selectedPenpot: {
-        instanceUrl: "https://penpot.paddie.io",
-        fileId: "file-1",
-        fileName: "Landing",
-        pageId: "page-1",
-        pageName: "Marketing",
-        frameIds: ["hero"],
-        frameNames: ["Hero"],
-        mode: "website" as const,
-        mcpName: "penpot-production",
-        styleSignals: {
-          colors: [],
-          typography: [],
-          layout: [],
-          components: [],
-          interactions: [],
-        },
-        assets: [],
-        tokens: {},
-        writebackAllowed: false,
-      },
+      designerAccess: "attached" as const,
+      designs: [context],
+      selectedDesign: context,
     }
 
-    expect(nativePlannerPrompt(run, resources)).toContain("Penpot")
-    expect(nativeWorkerPrompt(run, resources)).toContain("Penpot design context")
-    expect(nativeWorkerPrompt(run, resources)).toContain("MCP server: penpot-production")
-    expect(nativeWorkerPrompt(run, resources)).toContain("Do not call Penpot write/update/delete/create tools")
+    expect(nativePlannerPrompt(run, resources)).toContain("Paddie Designer")
+    expect(nativeWorkerPrompt(run, resources)).toContain("Paddie Designer")
+    expect(nativeWorkerPrompt(run, resources)).toContain(`Design: Landing (${document.id})`)
+    expect(nativeWorkerPrompt(run, resources)).toContain("Design JSON")
   })
 
   test("adds template visual contracts to native prompts", () => {
@@ -527,7 +488,7 @@ PADDIE_TEMPLATE_VISUAL_REPORT_END
 
   test("classifies approval-gated actions", () => {
     expect(classifyAutopilotApproval("git push origin dev")).toBe("approval-required")
-    expect(classifyAutopilotApproval("Penpot writeback to update the Hero frame")).toBe("approval-required")
+    expect(classifyAutopilotApproval("design writeback to update the Hero frame")).toBe("approval-required")
     expect(classifyAutopilotApproval("bun test")).toBe("safe")
   })
 
@@ -535,7 +496,6 @@ PADDIE_TEMPLATE_VISUAL_REPORT_END
     expect(autopilotGoalNeedsTemplate("use one of my templates")).toBe(true)
     expect(autopilotGoalNeedsWorkflow("wire the workflow builder flow")).toBe(true)
     expect(autopilotGoalNeedsData("integrate Paddie Memory and a knowledge base")).toBe(true)
-    expect(autopilotGoalNeedsPenpot("convert a Penpot frame into a template")).toBe(true)
   })
 
   test("transitions run state without losing the timeline", () => {

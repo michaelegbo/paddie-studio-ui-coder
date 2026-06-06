@@ -19,13 +19,6 @@ export const commands = {
 	wslPath: (path: string, mode: "windows" | "linux" | null) => __TAURI_INVOKE<string>("wsl_path", { path, mode }),
 	resolveAppPath: (appName: string) => __TAURI_INVOKE<string | null>("resolve_app_path", { appName }),
 	openPath: (path: string, appName: string | null) => __TAURI_INVOKE<null>("open_path", { path, appName }),
-	embeddedWebviewOpen: (id: string, url: string, bounds: EmbeddedWebviewBounds, visible: boolean) => __TAURI_INVOKE<null>("embedded_webview_open", { id, url, bounds, visible }),
-	embeddedWebviewSetBounds: (id: string, bounds: EmbeddedWebviewBounds) => __TAURI_INVOKE<null>("embedded_webview_set_bounds", { id, bounds }),
-	embeddedWebviewSetVisible: (id: string, visible: boolean) => __TAURI_INVOKE<null>("embedded_webview_set_visible", { id, visible }),
-	embeddedWebviewNavigate: (id: string, url: string) => __TAURI_INVOKE<null>("embedded_webview_navigate", { id, url }),
-	embeddedWebviewReload: (id: string) => __TAURI_INVOKE<null>("embedded_webview_reload", { id }),
-	embeddedWebviewFocus: (id: string) => __TAURI_INVOKE<null>("embedded_webview_focus", { id }),
-	embeddedWebviewClose: (id: string) => __TAURI_INVOKE<null>("embedded_webview_close", { id }),
 	checkStoreUpdate: () => __TAURI_INVOKE<StoreUpdateCheck>("check_store_update"),
 	installStoreUpdate: () => __TAURI_INVOKE<null>("install_store_update"),
 };
@@ -37,13 +30,6 @@ export const events = {
 };
 
 /* Types */
-export type EmbeddedWebviewBounds = {
-		x: number,
-		y: number,
-		width: number,
-		height: number,
-	};
-
 export type InitStep = { phase: "server_waiting" } | { phase: "sqlite_waiting" } | { phase: "done" };
 
 export type LinuxDisplayBackend = "wayland" | "auto";
@@ -89,4 +75,3 @@ function makeEvent<T>(name: string) {
 
     return Object.assign(fn, base);
 }
-

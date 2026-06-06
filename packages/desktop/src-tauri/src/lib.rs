@@ -15,7 +15,6 @@ mod windows;
 use crate::cli::CommandChild;
 use futures::{FutureExt, TryFutureExt};
 use std::{
-    collections::HashMap,
     env,
     future::Future,
     net::TcpListener,
@@ -67,189 +66,8 @@ struct ServerState {
     child: Arc<Mutex<Option<CommandChild>>>,
 }
 
-#[derive(Default)]
-struct EmbeddedWebviews {
-    views: Mutex<HashMap<String, tauri::Webview>>,
-}
-
-#[derive(serde::Deserialize, specta::Type)]
-#[serde(rename_all = "camelCase")]
-struct EmbeddedWebviewBounds {
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-}
-
 /// Resolves with sidecar credentials as soon as the sidecar is spawned (before health check).
 struct SidecarReady(futures::future::Shared<oneshot::Receiver<ServerReadyData>>);
-
-#[tauri::command]
-#[specta::specta]
-async fn embedded_webview_open(
-    app: AppHandle,
-    state: State<'_, EmbeddedWebviews>,
-    id: String,
-    url: String,
-    bounds: EmbeddedWebviewBounds,
-    visible: bool,
-) -> Result<(), String> {
-    close_embedded_webview(&app, &state, &id);
-    std::thread::sleep(Duration::from_millis(75));
-
-    let parsed: tauri::Url = url
-        .parse()
-        .map_err(|e| format!("Invalid embedded webview URL: {e}"))?;
-    let window = app
-        .get_window(MainWindow::LABEL)
-        .ok_or_else(|| "Main window not found".to_string())?;
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to resolve app data directory: {e}"))?
-        .join("embedded-webviews")
-        .join(sanitize_embedded_webview_id(&id));
-    std::fs::create_dir_all(&data_dir)
-        .map_err(|e| format!("Failed to create embedded webview data directory: {e}"))?;
-
-    let create_view = || {
-        window.add_child(
-            tauri::webview::WebviewBuilder::new(id.clone(), tauri::WebviewUrl::External(parsed.clone()))
-                .data_directory(data_dir.clone())
-                .disable_drag_drop_handler()
-                .focused(visible),
-            tauri::LogicalPosition::new(bounds.x, bounds.y),
-            tauri::LogicalSize::new(bounds.width, bounds.height),
-        )
-    };
-    let view = match create_view() {
-        Ok(view) => view,
-        Err(error) if error.to_string().contains("already exists") => {
-            close_embedded_webview(&app, &state, &id);
-            std::thread::sleep(Duration::from_millis(150));
-            create_view().map_err(|e| format!("Failed to create embedded webview: {e}"))?
-        }
-        Err(error) => return Err(format!("Failed to create embedded webview: {error}")),
-    };
-
-    if visible {
-        let _ = view.show();
-        let _ = view.set_focus();
-    } else {
-        let _ = view.hide();
-    }
-
-    state
-        .views
-        .lock()
-        .map_err(|_| "Embedded webview state is unavailable".to_string())?
-        .insert(id, view);
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-fn embedded_webview_set_bounds(
-    state: State<'_, EmbeddedWebviews>,
-    id: String,
-    bounds: EmbeddedWebviewBounds,
-) -> Result<(), String> {
-    let view = get_embedded_webview(&state, &id)?;
-    view.set_position(tauri::LogicalPosition::new(bounds.x, bounds.y))
-        .map_err(|e| format!("Failed to move embedded webview: {e}"))?;
-    view.set_size(tauri::LogicalSize::new(bounds.width, bounds.height))
-        .map_err(|e| format!("Failed to resize embedded webview: {e}"))
-}
-
-#[tauri::command]
-#[specta::specta]
-fn embedded_webview_set_visible(
-    state: State<'_, EmbeddedWebviews>,
-    id: String,
-    visible: bool,
-) -> Result<(), String> {
-    let view = get_embedded_webview(&state, &id)?;
-    if visible {
-        view.show()
-            .map_err(|e| format!("Failed to show embedded webview: {e}"))?;
-        let _ = view.set_focus();
-        return Ok(());
-    }
-    view.hide()
-        .map_err(|e| format!("Failed to hide embedded webview: {e}"))
-}
-
-#[tauri::command]
-#[specta::specta]
-fn embedded_webview_navigate(
-    state: State<'_, EmbeddedWebviews>,
-    id: String,
-    url: String,
-) -> Result<(), String> {
-    let view = get_embedded_webview(&state, &id)?;
-    view.navigate(
-        url.parse()
-            .map_err(|e| format!("Invalid embedded webview URL: {e}"))?,
-    )
-    .map_err(|e| format!("Failed to navigate embedded webview: {e}"))
-}
-
-#[tauri::command]
-#[specta::specta]
-fn embedded_webview_reload(state: State<'_, EmbeddedWebviews>, id: String) -> Result<(), String> {
-    get_embedded_webview(&state, &id)?
-        .reload()
-        .map_err(|e| format!("Failed to reload embedded webview: {e}"))
-}
-
-#[tauri::command]
-#[specta::specta]
-fn embedded_webview_focus(state: State<'_, EmbeddedWebviews>, id: String) -> Result<(), String> {
-    get_embedded_webview(&state, &id)?
-        .set_focus()
-        .map_err(|e| format!("Failed to focus embedded webview: {e}"))
-}
-
-#[tauri::command]
-#[specta::specta]
-fn embedded_webview_close(
-    app: AppHandle,
-    state: State<'_, EmbeddedWebviews>,
-    id: String,
-) -> Result<(), String> {
-    close_embedded_webview(&app, &state, &id);
-    Ok(())
-}
-
-fn get_embedded_webview(
-    state: &State<'_, EmbeddedWebviews>,
-    id: &str,
-) -> Result<tauri::Webview, String> {
-    state
-        .views
-        .lock()
-        .map_err(|_| "Embedded webview state is unavailable".to_string())?
-        .get(id)
-        .cloned()
-        .ok_or_else(|| "The embedded Penpot workspace is not open yet.".to_string())
-}
-
-fn close_embedded_webview(app: &AppHandle, state: &State<'_, EmbeddedWebviews>, id: &str) {
-    if let Ok(mut views) = state.views.lock() {
-        if let Some(view) = views.remove(id) {
-            let _ = view.close();
-        }
-    }
-    if let Some(view) = app.get_webview(id) {
-        let _ = view.close();
-    }
-}
-
-fn sanitize_embedded_webview_id(id: &str) -> String {
-    id.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_') { c } else { '_' })
-        .collect()
-}
 
 #[tauri::command]
 #[specta::specta]
@@ -521,7 +339,6 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(crate::window_customizer::PinchZoomDisablePlugin)
         .plugin(tauri_plugin_decorum::init())
-        .manage(EmbeddedWebviews::default())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -574,13 +391,6 @@ fn make_specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             wsl_path,
             resolve_app_path,
             open_path,
-            embedded_webview_open,
-            embedded_webview_set_bounds,
-            embedded_webview_set_visible,
-            embedded_webview_navigate,
-            embedded_webview_reload,
-            embedded_webview_focus,
-            embedded_webview_close,
             store_update::check_store_update,
             store_update::install_store_update
         ])

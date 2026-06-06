@@ -1158,23 +1158,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             continue
           }
 
-          if (item.type === "penpot-design") {
+          if (item.type === "paddie-design") {
             prompt.context.add({
-              type: "penpot-design",
-              instanceUrl: item.instanceUrl,
-              fileId: item.fileId,
-              fileName: item.fileName,
+              type: "paddie-design",
+              designId: item.designId,
+              designName: item.designName,
               pageId: item.pageId,
-              pageName: item.pageName,
               frameIds: item.frameIds,
               frameNames: item.frameNames,
               mode: item.mode,
-              mcpName: item.mcpName,
-              styleSignals: item.styleSignals,
-              assets: item.assets,
+              document: item.document,
+              selectedElements: item.selectedElements,
               tokens: item.tokens,
+              assets: item.assets,
+              thumbnailDataUrl: item.thumbnailDataUrl,
               writebackAllowed: item.writebackAllowed,
-              summary: item.summary,
             })
             continue
           }

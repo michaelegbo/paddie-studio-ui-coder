@@ -8,14 +8,13 @@ import {
   handleNotificationClick,
   loadLocaleDict,
   normalizeLocale,
-  type DOMRectLike,
   type Locale,
   type Platform,
   PlatformProvider,
   ServerConnection,
   useCommand,
 } from "@opencode-ai/app"
-import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core"
+import { Channel, convertFileSrc } from "@tauri-apps/api/core"
 import type { AsyncStorage } from "@solid-primitives/storage"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { readImage } from "@tauri-apps/plugin-clipboard-manager"
@@ -87,12 +86,6 @@ const parent = (path: string) => {
   return trim.slice(0, index)
 }
 
-type EmbeddedWebviewState = {
-  url: string
-  bounds: DOMRectLike
-  visible: boolean
-}
-
 const createPlatform = (): Platform => {
   const os = (() => {
     const type = ostype()
@@ -121,77 +114,6 @@ const createPlatform = (): Platform => {
   const guest = async (paths: string[]) => {
     if (os !== "windows" || !window.__OPENCODE__?.wsl) return paths
     return Promise.all(paths.map((path) => commands.wslPath(path, "linux").catch(() => path)))
-  }
-
-  const embeddedWebviews = new Map<string, EmbeddedWebviewState>()
-  const embeddedWebviewOpenTasks = new Map<string, Promise<void>>()
-  const normalizeBounds = (bounds: DOMRectLike) => {
-    return {
-      x: Math.max(0, Math.round(bounds.x)),
-      y: Math.max(0, Math.round(bounds.y)),
-      width: Math.max(1, Math.round(bounds.width)),
-      height: Math.max(1, Math.round(bounds.height)),
-    }
-  }
-  const rememberBounds = (bounds: DOMRectLike) => ({
-    x: bounds.x,
-    y: bounds.y,
-    width: bounds.width,
-    height: bounds.height,
-  })
-
-  const applyEmbeddedBounds = async (id: string, state: EmbeddedWebviewState, bounds: DOMRectLike) => {
-    const next = normalizeBounds(bounds)
-    state.bounds = rememberBounds(bounds)
-    await invoke("embedded_webview_set_bounds", { id, bounds: next })
-  }
-
-  const requireEmbeddedWebview = (id: string) => {
-    const current = embeddedWebviews.get(id)
-    if (current) return current
-    throw new Error("The embedded Penpot workspace is not open yet.")
-  }
-
-  const openEmbeddedWebview = async (input: { id: string; url: string; bounds: DOMRectLike; visible: boolean; force?: boolean }) => {
-    const pending = embeddedWebviewOpenTasks.get(input.id)
-    if (pending) {
-      await pending
-      await openEmbeddedWebview({ ...input, force: false })
-      return
-    }
-
-    const current = embeddedWebviews.get(input.id)
-    if (!input.force && current?.url === input.url) {
-      const bounds = normalizeBounds(input.bounds)
-      current.bounds = rememberBounds(input.bounds)
-      await invoke("embedded_webview_set_bounds", { id: input.id, bounds })
-      if (current.visible !== input.visible) {
-        current.visible = input.visible
-        await invoke("embedded_webview_set_visible", { id: input.id, visible: input.visible })
-      }
-      return
-    }
-
-    const task = (async () => {
-      if (current) {
-        embeddedWebviews.delete(input.id)
-        await invoke("embedded_webview_close", { id: input.id }).catch(() => undefined)
-      }
-      const bounds = normalizeBounds(input.bounds)
-      await invoke("embedded_webview_open", {
-        id: input.id,
-        url: input.url,
-        bounds,
-        visible: input.visible,
-      })
-      embeddedWebviews.set(input.id, { url: input.url, bounds: rememberBounds(input.bounds), visible: input.visible })
-    })()
-    embeddedWebviewOpenTasks.set(input.id, task)
-    try {
-      await task
-    } finally {
-      embeddedWebviewOpenTasks.delete(input.id)
-    }
   }
 
   return {
@@ -520,39 +442,6 @@ const createPlatform = (): Platform => {
     parseMarkdown: (markdown: string) => commands.parseMarkdownCommand(markdown),
 
     webviewZoom,
-
-    embeddedWebview: {
-      open: openEmbeddedWebview,
-      async setBounds(id, bounds) {
-        await applyEmbeddedBounds(id, requireEmbeddedWebview(id), bounds)
-      },
-      async setVisible(id, visible) {
-        const current = requireEmbeddedWebview(id)
-        const wasVisible = current.visible
-        current.visible = visible
-        if (wasVisible === visible) return
-        await invoke("embedded_webview_set_visible", { id, visible })
-      },
-      async navigate(id, url) {
-        const current = requireEmbeddedWebview(id)
-        await invoke("embedded_webview_navigate", { id, url })
-        current.url = url
-      },
-      async reload(id) {
-        requireEmbeddedWebview(id)
-        await invoke("embedded_webview_reload", { id })
-      },
-      async focus(id) {
-        requireEmbeddedWebview(id)
-        await invoke("embedded_webview_focus", { id })
-      },
-      async close(id) {
-        const current = embeddedWebviews.get(id)
-        if (!current) return
-        embeddedWebviews.delete(id)
-        await invoke("embedded_webview_close", { id }).catch(() => undefined)
-      },
-    },
 
     checkAppExists: async (appName: string) => {
       return commands.checkAppExists(appName)

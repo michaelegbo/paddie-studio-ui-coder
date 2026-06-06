@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
 import type { ContextItem, Prompt } from "@/context/prompt"
+import { createDefaultDesignDocument, createPaddieDesignContext, designFrames } from "@/designer/helpers"
 
 let createPromptSubmit: typeof import("./submit").createPromptSubmit
 
@@ -687,36 +688,19 @@ describe("prompt submit worktree selection", () => {
     })
   })
 
-  test("restores Penpot transient context when prompt send fails", async () => {
-    params = { id: "session-penpot" }
+  test("restores Designer transient context when prompt send fails", async () => {
+    params = { id: "session-design" }
     promptAsyncError = new Error("network down")
+    const document = createDefaultDesignDocument("Landing")
+    const frame = designFrames(document)[0]!
     contextItems.push({
-      key: "penpot-design:https://penpot.paddie.io:penpot-production:file-1:page-1:website:hero:read",
-      type: "penpot-design",
-      instanceUrl: "https://penpot.paddie.io",
-      fileId: "file-1",
-      fileName: "Landing",
-      pageId: "page-1",
-      pageName: "Marketing",
-      frameIds: ["hero"],
-      frameNames: ["Hero"],
-      mode: "website",
-      mcpName: "penpot-production",
-      styleSignals: {
-        colors: [],
-        typography: [],
-        layout: [],
-        components: [],
-        interactions: [],
-      },
-      assets: [],
-      tokens: {},
-      writebackAllowed: false,
-      summary: "Build from this frame.",
+      key: `paddie-design:${document.id}:${document.currentPageId}:website:${frame.id}:read`,
+      type: "paddie-design",
+      ...createPaddieDesignContext({ document, selectedIds: [frame.id], mode: "website" }),
     })
 
     const submit = createPromptSubmit({
-      info: () => ({ id: "session-penpot" }),
+      info: () => ({ id: "session-design" }),
       imageAttachments: () => [],
       commentCount: () => 0,
       autoAccept: () => false,
@@ -737,13 +721,12 @@ describe("prompt submit worktree selection", () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     }
 
-    expect(contextRemoves).toContain("penpot-design:https://penpot.paddie.io:penpot-production:file-1:page-1:website:hero:read")
+    expect(contextRemoves).toContain(`paddie-design:${document.id}:${document.currentPageId}:website:${frame.id}:read`)
     expect(contextAdds).toHaveLength(1)
     expect(contextAdds[0]).toMatchObject({
-      type: "penpot-design",
-      instanceUrl: "https://penpot.paddie.io",
-      fileId: "file-1",
-      frameNames: ["Hero"],
+      type: "paddie-design",
+      designId: document.id,
+      frameNames: [frame.name],
     })
   })
 })
