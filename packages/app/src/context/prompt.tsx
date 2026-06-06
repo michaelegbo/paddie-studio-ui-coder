@@ -5,9 +5,9 @@ import { batch, createMemo, createRoot, getOwner, onCleanup } from "solid-js"
 import { createStore, type SetStoreFunction } from "solid-js/store"
 import type { AutopilotContextPayload } from "@/autopilot/helpers"
 import type { FileSelection } from "@/context/file"
+import type { PaddieDesignContextPayload } from "@/designer/helpers"
 import type { InspirationContextPayload } from "@/inspiration/helpers"
 import type { PaddieDataLlmRuntimeConfig } from "@/paddie-data/helpers"
-import type { PenpotDesignContextPayload } from "@/penpot/helpers"
 import type { TemplateFile, TemplateVisualContract } from "@/template/helpers"
 import { Persist, persisted } from "@/utils/persist"
 
@@ -183,8 +183,8 @@ export type AutopilotContextItem = AutopilotContextPayload & {
   type: "autopilot"
 }
 
-export type PenpotDesignContextItem = PenpotDesignContextPayload & {
-  type: "penpot-design"
+export type PaddieDesignContextItem = PaddieDesignContextPayload & {
+  type: "paddie-design"
 }
 
 export type ContextItem =
@@ -197,7 +197,7 @@ export type ContextItem =
   | DataPlaygroundContextItem
   | InspirationContextItem
   | AutopilotContextItem
-  | PenpotDesignContextItem
+  | PaddieDesignContextItem
 
 export const DEFAULT_PROMPT: Prompt = [{ type: "text", content: "", start: 0, end: 0 }]
 
@@ -253,8 +253,8 @@ function contextItemKey(item: ContextItem) {
   if (item.type === "element") return `${item.type}:${item.url}:${item.selector}`
   if (item.type === "inspiration") return `${item.type}:${item.url}:${item.mode}:${item.selector ?? "page"}`
   if (item.type === "autopilot") return `${item.type}:${item.runID}`
-  if (item.type === "penpot-design") {
-    return `${item.type}:${item.instanceUrl}:${item.mcpName}:${item.fileId}:${item.pageId}:${item.mode}:${item.selectionSource ?? "manual"}:${item.selectionId ?? "manual"}:${item.frameIds.join(",") || item.frameNames.join(",") || "active"}:${item.writebackAllowed ? "write" : "read"}`
+  if (item.type === "paddie-design") {
+    return `${item.type}:${item.designId}:${item.pageId}:${item.mode}:${item.frameIds.join(",") || item.frameNames.join(",") || "active"}:${item.writebackAllowed ? "write" : "read"}`
   }
   if (item.type === "memory") return `${item.type}:${item.userID}:${item.mode}:${item.query ?? item.label}`
   if (item.type === "knowledge-base") return `${item.type}:${item.knowledgeBaseID}:${item.mode}:${item.query ?? item.label}`

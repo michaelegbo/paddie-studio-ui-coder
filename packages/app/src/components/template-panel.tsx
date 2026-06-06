@@ -20,10 +20,10 @@ import {
   type PaddieStudioEventStatus,
 } from "@/lib/paddie-telemetry"
 import { AutopilotPanel } from "@/components/autopilot-panel"
+import { DesignerPanel } from "@/components/designer-panel"
 import { InspirationPanel } from "@/components/inspiration-panel"
 import { PaddieAccountPanel } from "@/components/paddie-account-panel"
 import { PaddieDataPanel } from "@/components/paddie-data-panel"
-import { PenpotPanel } from "@/components/penpot-panel"
 import { WorkflowBuilder, type WorkflowAttachPayload } from "@/components/workflow-builder"
 import { DialogConnectProvider } from "@/components/dialog-connect-provider"
 import { DialogSelectProvider } from "@/components/dialog-select-provider"
@@ -105,7 +105,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 type Device = "desktop" | "tablet" | "mobile"
 type Desk = "1920" | "1600" | "1440"
-type StudioSection = "templates" | "inspiration" | "autopilot" | "penpot" | "data" | "workflow" | "account"
+type StudioSection = "templates" | "inspiration" | "autopilot" | "designer" | "data" | "workflow" | "account"
 
 const views = {
   "1920": { w: 1920, h: 1080, label: "1920x1080" },
@@ -931,11 +931,11 @@ export function TemplatePanel(props: {
                         <div class="text-15-medium text-text-base">
                           {autopilotAvailable()
                             ? inspirationAvailable()
-                              ? "Templates, inspiration, autopilot, Penpot, data & workflows"
-                              : "Templates, autopilot, Penpot, data & workflows"
+                              ? "Templates, inspiration, autopilot, designer, data & workflows"
+                              : "Templates, autopilot, designer, data & workflows"
                             : inspirationAvailable()
-                              ? "Templates, inspiration, Penpot, data & workflows"
-                              : "Templates, Penpot, data & workflows"}
+                              ? "Templates, inspiration, designer, data & workflows"
+                              : "Templates, designer, data & workflows"}
                         </div>
                       </div>
                     </div>
@@ -944,7 +944,7 @@ export function TemplatePanel(props: {
                         {tab("templates", "Templates")}
                         <Show when={inspirationAvailable()}>{tab("inspiration", "Inspiration")}</Show>
                         <Show when={autopilotAvailable()}>{tab("autopilot", "Autopilot")}</Show>
-                        {tab("penpot", "Penpot")}
+                        {tab("designer", "Designer")}
                         {tab("data", "Data")}
                         {tab("workflow", "Workflow Builder")}
                         {tab("account", "Dashboard")}
@@ -994,8 +994,8 @@ export function TemplatePanel(props: {
                         ? "Manage your Studio plan, billing handoff, and account usage from Paddie."
                       : section() === "autopilot"
                         ? "Plan, build, test, preview, and iterate through a scoped native opencode worker session."
-                      : section() === "penpot"
-                        ? "Connect Penpot MCP, inspect frames, attach design context, and hand selected frames to chat or Autopilot."
+                      : section() === "designer"
+                        ? "Design frames directly in Studio, attach selected frames to chat, and turn them into websites or templates."
                       : section() === "inspiration"
                         ? "Browse a public website, capture a selectable snapshot, and attach page or element references to chat."
                         : "Browse a starter first, then open it in a desktop canvas. Curated parts stay hidden until you select one or open them yourself."}
@@ -1010,8 +1010,8 @@ export function TemplatePanel(props: {
                   <AutopilotPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
                 </Show>
 
-                <Show when={section() === "penpot"}>
-                  <PenpotPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
+                <Show when={section() === "designer"}>
+                  <DesignerPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
                 </Show>
 
                 <Show when={section() === "workflow"}>

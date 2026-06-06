@@ -55,4 +55,55 @@ describe("paddie api errors", () => {
     })
     expect(paddieApiErrorMessage(err)).toBe("RAG query limit exceeded (20/20)")
   })
+
+  test("parses card-backed trial billing blockers", () => {
+    const err = paddieApiErrorFromResponse(402, {
+      success: false,
+      upgrade_required: true,
+      code: "TRIAL_REQUIRED",
+      message: "Choose a plan and add a card to start your 14-day Paddie trial.",
+      current_plan: "trial",
+      billing_required: true,
+      trial_required: true,
+      upgrade_url: "/pricing",
+    })
+
+    expect(err).toBeInstanceOf(UpgradeRequiredError)
+    expect(err).toMatchObject({
+      code: "TRIAL_REQUIRED",
+      message: "Choose a plan and add a card to start your 14-day Paddie trial.",
+      current_plan: "trial",
+      current_tier: "trial",
+      billing_required: true,
+      trial_required: true,
+      upgrade_url: "/pricing",
+    })
+  })
+
+  test("parses nested RMN billing blockers", () => {
+    const err = paddieApiErrorFromResponse(402, {
+      success: false,
+      upgrade_required: true,
+      current_plan: "trial",
+      blocker: {
+        code: "TRIAL_REQUIRED",
+        message: "Choose a plan and add a card to start your 14-day Paddie trial.",
+        upgrade_url: "/pricing?plan=pro",
+        required_tier: "pro",
+        billing_required: true,
+        trial_required: true,
+      },
+    })
+
+    expect(err).toBeInstanceOf(UpgradeRequiredError)
+    expect(err).toMatchObject({
+      code: "TRIAL_REQUIRED",
+      message: "Choose a plan and add a card to start your 14-day Paddie trial.",
+      current_plan: "trial",
+      required_tier: "pro",
+      billing_required: true,
+      trial_required: true,
+      upgrade_url: "/pricing?plan=pro",
+    })
+  })
 })

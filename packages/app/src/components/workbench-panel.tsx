@@ -25,7 +25,7 @@ import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
 import { createSizing } from "@/pages/session/helpers"
 import { previewFromSession, previewFromTerminals } from "@/utils/preview-url"
-import { detectPreview } from "@/utils/workbench-preview"
+import { detectPreview, type PreviewTarget } from "@/utils/workbench-preview"
 
 type Node = {
   name: string
@@ -46,6 +46,9 @@ type Mode = "code" | "preview"
 type Surface = "studio" | "templates"
 type Device = "desktop" | "tablet" | "mobile"
 type Desk = "1920" | "1600" | "1440"
+type CommandPreviewTarget = Extract<PreviewTarget, { kind: "command" }>
+
+const PROMPT_SHELL_EVENT = "paddie:prompt-shell"
 
 const views = {
   "1920": { w: 1920, h: 1080, label: "1920x1080" },
@@ -62,6 +65,23 @@ const base = (path: string) => {
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+const samePath = (a: string, b: string) => {
+  const clean = (value: string) => value.replace(/[\\/]+$/, "").toLowerCase()
+  return clean(a) === clean(b)
+}
+
+const quoteShellPath = (path: string) => {
+  if (/^[\w./:=-]+$/.test(path)) return path
+  return `"${path.replaceAll('"', '\\"')}"`
+}
+
+const commandText = (target: CommandPreviewTarget, root: string) =>
+  target.cwd && !samePath(target.cwd, root)
+    ? `cd ${quoteShellPath(target.cwd)} && ${target.label}`
+    : target.label
+
+const isCommandTarget = (target: PreviewTarget): target is CommandPreviewTarget => target.kind === "command"
 
 const esc = (value: string) =>
   value
@@ -280,6 +300,8 @@ export function WorkbenchPanel(props: {
     staticPath: "",
     staticLabel: "",
     staticScan: false,
+    runCommand: "",
+    runLabel: "",
     pick: false,
     doc: "",
     waitPick: false,
@@ -300,6 +322,7 @@ export function WorkbenchPanel(props: {
   const previewUrl = createMemo(() => detected() || state.staticUrl)
   const previewLabel = createMemo(() => detected() || state.staticLabel)
   const previewSource = createMemo(() => (detected() ? "live" : state.staticUrl ? "static" : "none"))
+  const working = createMemo(() => sync.data.session_working(params.id ?? ""))
   const tree = () => state.tree
   const showFiles = createMemo(() => state.mode !== "preview" && state.files)
   const box = createMemo(() => state.box || 1200)
@@ -452,6 +475,31 @@ export function WorkbenchPanel(props: {
     platform.openLink(url)
   }
 
+  const runCode = () => {
+    if (working()) {
+      if (params.id) void sdk.client.session.abort({ sessionID: params.id }).catch(() => {})
+      showToast({ title: "Stopping code run", description: "The current chat run was asked to stop." })
+      return
+    }
+
+    const command = state.runCommand.trim()
+    if (!command) {
+      focus()
+      showToast({
+        variant: "error",
+        title: "No run command found",
+        description: "Add a dev/start script or type a shell command in chat.",
+      })
+      return
+    }
+
+    if (props.chatHidden) props.onChatToggle?.()
+    requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent(PROMPT_SHELL_EVENT, { detail: { action: "run", command, submit: true } }))
+    })
+    showToast({ title: "Run command sent", description: command })
+  }
+
   const zoomOut = () => setState("zoom", (value) => clamp(value - 10, 50, 200))
   const zoomIn = () => setState("zoom", (value) => clamp(value + 10, 50, 200))
   const zoomReset = () => setState("zoom", 100)
@@ -588,10 +636,13 @@ export function WorkbenchPanel(props: {
     if (!fs || !dir) return
 
     setState("staticScan", true)
-    const targets = await detectPreview({ fs, root: dir, os: platform.os }).catch(() => [])
+    const targets = await detectPreview({ fs, root: dir, os: platform.os }).catch((): PreviewTarget[] => [])
     if (id !== scan) return
 
+    const command = targets.find(isCommandTarget)
     const target = targets.find((item) => item.kind === "static")
+    setState("runCommand", command ? commandText(command, dir) : "")
+    setState("runLabel", command?.label ?? "")
     if (!target || target.kind !== "static" || !fs.previewUrl) {
       setState({
         staticUrl: "",
@@ -765,6 +816,8 @@ export function WorkbenchPanel(props: {
           staticPath: "",
           staticLabel: "",
           staticScan: false,
+          runCommand: "",
+          runLabel: "",
         })
       },
       { defer: true },
@@ -1128,6 +1181,18 @@ export function WorkbenchPanel(props: {
                       <div class="text-13-medium text-text-base">Live browser canvas</div>
                     </div>
                     <div class="min-w-0 shrink-0 flex items-center gap-2 self-start max-w-full overflow-x-auto">
+                      <Button
+                        variant="ghost"
+                        class={working() ? "h-8 px-3 gap-2 text-11-medium text-text-strong" : "h-8 px-3 gap-2 text-11-medium"}
+                        onClick={runCode}
+                        aria-label={working() ? "Stop code run" : "Run code"}
+                        title={working() ? "Stop the current chat run" : state.runCommand || "Run detected dev command"}
+                      >
+                        <Icon name={working() ? "stop" : "terminal"} class="size-4" />
+                        <Show when={!compact()}>
+                          <span>{working() ? "Stop code" : "Run code"}</span>
+                        </Show>
+                      </Button>
                       <Show when={previewUrl()}>
                         <Button
                           variant="ghost"
@@ -1143,23 +1208,29 @@ export function WorkbenchPanel(props: {
                         </Button>
                         <Button
                           variant="ghost"
-                          class="h-8 px-2"
+                          class="h-8 px-3 gap-2 text-11-medium"
                           onClick={openPreview}
                           aria-label="Open preview in browser"
                           title="Open preview in browser"
                         >
                           <Icon name="open-file" class="size-4" />
+                          <Show when={!compact()}>
+                            <span>Open</span>
+                          </Show>
                         </Button>
                       </Show>
                       <Button
                         variant="ghost"
-                        class={state.pick ? "h-8 px-2 bg-surface-base-active text-text-strong" : "h-8 px-2"}
+                        class={state.pick ? "h-8 px-3 gap-2 text-11-medium bg-surface-base-active text-text-strong" : "h-8 px-3 gap-2 text-11-medium"}
                         disabled={!previewUrl() || state.waitPick}
                         onClick={pick}
                         aria-label={state.pick ? "Stop selecting elements" : "Select an element from preview"}
                         title={state.pick ? "Stop selecting elements" : "Select an element from preview"}
                       >
                         <Icon name="window-cursor" class="size-4" />
+                        <Show when={!compact()}>
+                          <span>{state.pick ? "Stop select" : "Select"}</span>
+                        </Show>
                       </Button>
                     </div>
                   </div>
@@ -1181,32 +1252,41 @@ export function WorkbenchPanel(props: {
                     <div class="min-w-0 shrink-0 max-w-full rounded-xl border border-border-weaker-base bg-background-stronger p-1 flex items-center gap-1 overflow-x-auto">
                       <Button
                         variant="ghost"
-                        class="h-8 px-2 text-11-medium shrink-0"
+                        class="h-8 px-2 gap-1.5 text-11-medium shrink-0"
                         onClick={zoomOut}
                         disabled={state.zoom <= 50}
                         aria-label="Zoom out preview"
                         title="Zoom out preview"
                       >
-                        -
+                        <span>-</span>
+                        <Show when={!compact()}>
+                          <span>Out</span>
+                        </Show>
                       </Button>
                       <Button
                         variant="ghost"
-                        class="h-8 px-2 text-11-medium shrink-0"
+                        class="h-8 px-3 gap-1.5 text-11-medium shrink-0"
                         onClick={zoomReset}
                         aria-label="Reset preview zoom"
                         title="Reset preview zoom"
                       >
-                        {zoom()}
+                        <Show when={!compact()}>
+                          <span>Zoom</span>
+                        </Show>
+                        <span>{zoom()}</span>
                       </Button>
                       <Button
                         variant="ghost"
-                        class="h-8 px-2 text-11-medium shrink-0"
+                        class="h-8 px-2 gap-1.5 text-11-medium shrink-0"
                         onClick={zoomIn}
                         disabled={state.zoom >= 200}
                         aria-label="Zoom in preview"
                         title="Zoom in preview"
                       >
-                        +
+                        <span>+</span>
+                        <Show when={!compact()}>
+                          <span>In</span>
+                        </Show>
                       </Button>
                       {deskButton("1920")}
                       {deskButton("1600")}

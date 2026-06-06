@@ -10,7 +10,6 @@ import {
   addAutopilotEvent,
   autopilotContextFromRun,
   autopilotGoalNeedsData,
-  autopilotGoalNeedsPenpot,
   autopilotGoalNeedsTemplate,
   autopilotGoalNeedsWorkflow,
   autopilotHandoffFromText,
@@ -612,7 +611,7 @@ export function AutopilotPanel(props: {
     event.source === "system" ||
     event.source === "template" ||
     event.source === "workflow" ||
-    event.source === "penpot" ||
+    event.source === "designer" ||
     event.title.includes("worker") ||
     event.title.includes("Worker") ||
     event.title.includes("Preview")
@@ -956,20 +955,16 @@ export function AutopilotPanel(props: {
     }
   }
 
-  const loadPenpotContext = async (current: AutopilotRun): Promise<AutopilotResourceInput> => {
-    const penpotDesigns = prompt.context.items().filter((item) => item.type === "penpot-design")
-    if (penpotDesigns.length) {
+  const loadDesignerContext = async (): Promise<AutopilotResourceInput> => {
+    const designs = prompt.context.items().filter((item) => item.type === "paddie-design")
+    if (designs.length) {
       return {
-        penpotAccess: "attached",
-        penpotDesigns: penpotDesigns.map((item) => ({ ...item })),
-        selectedPenpot: { ...penpotDesigns[0]! },
+        designerAccess: "attached",
+        designs: designs.map((item) => ({ ...item })),
+        selectedDesign: { ...designs[0]! },
       }
     }
-    if (!autopilotGoalNeedsPenpot(current.goal)) return {}
-    return {
-      penpotAccess: "unavailable",
-      penpotError: "No Penpot frame is attached. Use the Studio Penpot tab to connect MCP and attach one or more frames.",
-    }
+    return {}
   }
 
   const loadSelectedTemplate = async (selection: { id: string } | undefined): Promise<AutopilotTemplateContext | undefined> => {
@@ -1192,7 +1187,7 @@ export function AutopilotPanel(props: {
           id: `${current.runID}:context-start`,
           source: "paddie",
           title: "Gathering Studio context",
-          body: `Loading available templates, workflows, and attached Penpot context before planning in ${workspace}.`,
+          body: `Loading available templates, workflows, and attached Designer context before planning in ${workspace}.`,
           at: new Date().toISOString(),
         },
         { understand: "done", gather: "active" },
@@ -1214,15 +1209,15 @@ export function AutopilotPanel(props: {
         if (!auth.isAuthenticated()) throw new Error("Log in to Paddie Studio before asking Autopilot to use Memory, AI RAG, or API keys.")
       }
 
-      const [templateResources, workflowResources, penpotResources] = await Promise.all([
+      const [templateResources, workflowResources, designerResources] = await Promise.all([
         loadTemplateCatalog(current),
         loadWorkflowCatalog(current),
-        loadPenpotContext(current),
+        loadDesignerContext(),
       ])
       const resources = {
         ...templateResources,
         ...workflowResources,
-        ...penpotResources,
+        ...designerResources,
       } satisfies AutopilotResourceInput
 
       current = runByID(current.runID) ?? current
@@ -1233,7 +1228,7 @@ export function AutopilotPanel(props: {
           id: `${current.runID}:context-ready`,
           source: "paddie",
           title: "Studio context ready",
-          body: `${resources.templates?.length ?? 0} templates, ${resources.workflows?.length ?? 0} workflows, and ${resources.penpotDesigns?.length ?? 0} Penpot design context item${(resources.penpotDesigns?.length ?? 0) === 1 ? "" : "s"} available to the native worker.`,
+          body: `${resources.templates?.length ?? 0} templates, ${resources.workflows?.length ?? 0} workflows, and ${resources.designs?.length ?? 0} Designer context item${(resources.designs?.length ?? 0) === 1 ? "" : "s"} available to the native worker.`,
           at: new Date().toISOString(),
         },
         { gather: "done", plan: "active" },
@@ -1833,7 +1828,7 @@ export function AutopilotPanel(props: {
     if (source === "autopilot") return "autopilot"
     if (source === "template") return "templates"
     if (source === "workflow") return "workflow"
-    if (source === "penpot") return "penpot"
+    if (source === "designer") return "designer"
     if (source === "browser") return "browser"
     if (source === "paddie") return "paddie"
     return source
@@ -1896,7 +1891,7 @@ export function AutopilotPanel(props: {
       return "border-blue-500/40 bg-blue-500/[0.07] shadow-[0_0_0_1px_rgba(59,130,246,0.08),0_18px_50px_rgba(59,130,246,0.08)]"
     }
     if (event.source === "browser") return "border-green-500/25 bg-green-500/[0.04] hover:bg-green-500/[0.07]"
-    if (event.source === "template" || event.source === "workflow" || event.source === "penpot") {
+    if (event.source === "template" || event.source === "workflow" || event.source === "designer") {
       return "border-yellow-500/25 bg-yellow-500/[0.04] hover:bg-yellow-500/[0.07]"
     }
     return "border-border-weaker-base bg-background-stronger/80 hover:bg-surface-base-hover"
@@ -1949,7 +1944,7 @@ export function AutopilotPanel(props: {
   const activityEventSourceClass = (source: AutopilotEvent["source"]) => {
     if (source === "opencode") return "border-blue-500/25 bg-blue-500/10 text-blue-300"
     if (source === "browser") return "border-green-500/25 bg-green-500/10 text-green-300"
-    if (source === "template" || source === "workflow" || source === "penpot") return "border-yellow-500/25 bg-yellow-500/10 text-yellow-300"
+    if (source === "template" || source === "workflow" || source === "designer") return "border-yellow-500/25 bg-yellow-500/10 text-yellow-300"
     if (source === "paddie") return "border-cyan-500/25 bg-cyan-500/10 text-cyan-300"
     return "border-purple-500/25 bg-purple-500/10 text-purple-300"
   }

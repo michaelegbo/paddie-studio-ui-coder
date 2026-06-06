@@ -203,7 +203,7 @@ type CommentItem = {
 
 type TransientItem = Extract<
   ContextItem,
-  { type: "element" | "template" | "workflow" | "memory" | "knowledge-base" | "data-playground" | "inspiration" | "autopilot" | "penpot-design" }
+  { type: "element" | "template" | "workflow" | "memory" | "knowledge-base" | "data-playground" | "inspiration" | "autopilot" | "paddie-design" }
 > & {
   key: string
 }
@@ -217,7 +217,7 @@ const isTransientItem = (item: ContextItem | (ContextItem & { key: string })): i
   item.type === "data-playground" ||
   item.type === "inspiration" ||
   item.type === "autopilot" ||
-  item.type === "penpot-design"
+  item.type === "paddie-design"
 
 export function createPromptSubmit(input: PromptSubmitInput) {
   const navigate = useNavigate()
@@ -410,23 +410,21 @@ export function createPromptSubmit(input: PromptSubmitInput) {
         continue
       }
 
-      if (item.type === "penpot-design") {
+      if (item.type === "paddie-design") {
         prompt.context.add({
-          type: "penpot-design",
-          instanceUrl: item.instanceUrl,
-          fileId: item.fileId,
-          fileName: item.fileName,
+          type: "paddie-design",
+          designId: item.designId,
+          designName: item.designName,
           pageId: item.pageId,
-          pageName: item.pageName,
           frameIds: item.frameIds,
           frameNames: item.frameNames,
           mode: item.mode,
-          mcpName: item.mcpName,
-          styleSignals: item.styleSignals,
-          assets: item.assets,
+          document: item.document,
+          selectedElements: item.selectedElements,
           tokens: item.tokens,
+          assets: item.assets,
+          thumbnailDataUrl: item.thumbnailDataUrl,
           writebackAllowed: item.writebackAllowed,
-          summary: item.summary,
         })
         continue
       }

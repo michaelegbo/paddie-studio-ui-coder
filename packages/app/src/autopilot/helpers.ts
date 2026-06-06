@@ -1,10 +1,5 @@
 import { dataGoalNeedsPaddieSkill, paddieDataSkillInstruction } from "@/paddie-data/helpers"
-import {
-  formatPenpotDesignNote,
-  penpotGoalNeedsDesign,
-  penpotMcpRuntimeInstruction,
-  type PenpotDesignContextPayload,
-} from "@/penpot/helpers"
+import { formatPaddieDesignNote, type PaddieDesignContextPayload } from "@/designer/helpers"
 import { formatTemplateVisualContract, type TemplateVisualContract } from "@/template/helpers"
 
 export type AutopilotRunStatus = "running" | "paused" | "stopped" | "completed"
@@ -31,7 +26,7 @@ export type AutopilotPlanStep = {
 
 export type AutopilotEvent = {
   id: string
-  source: "user" | "autopilot" | "opencode" | "paddie" | "template" | "workflow" | "penpot" | "browser" | "system"
+  source: "user" | "autopilot" | "opencode" | "paddie" | "template" | "workflow" | "designer" | "browser" | "system"
   title: string
   body: string
   detail?: string
@@ -113,10 +108,10 @@ export type AutopilotResourceInput = {
   workflowAccess?: "available" | "logged-out" | "unavailable"
   workflowError?: string
   selectedWorkflow?: AutopilotWorkflowContext
-  penpotAccess?: "attached" | "available" | "unavailable"
-  penpotError?: string
-  penpotDesigns?: PenpotDesignContextPayload[]
-  selectedPenpot?: PenpotDesignContextPayload
+  designerAccess?: "attached" | "unavailable"
+  designerError?: string
+  designs?: PaddieDesignContextPayload[]
+  selectedDesign?: PaddieDesignContextPayload
   plannerOutput?: string
 }
 
@@ -667,8 +662,8 @@ export function nativePlannerPrompt(run: AutopilotContextPayload, input?: Autopi
     "If you choose a Paddie template, include exactly: PADDIE_TEMPLATE_ID: <id> and PADDIE_TEMPLATE_NAME: <name>.",
     "If you choose a Paddie workflow, include exactly: PADDIE_WORKFLOW_ID: <id> and PADDIE_WORKFLOW_NAME: <name>.",
     autopilotGoalNeedsData(run.goal) ? paddieDataSkillInstruction() : "",
-    autopilotGoalNeedsPenpot(run.goal) || input?.selectedPenpot
-      ? "If this run uses Penpot, identify the selected frame(s), the intended output, and whether writeback is requested. Do not plan Penpot writes unless writeback is explicitly allowed."
+    input?.selectedDesign
+      ? "If this run uses an attached Paddie Designer frame, identify the selected frame(s), intended output, and whether design writeback is requested. Do not plan design mutations unless writeback is explicitly allowed."
       : "",
     "",
     resourceCatalog(input),
@@ -695,7 +690,9 @@ export function nativeWorkerPrompt(run: AutopilotContextPayload, input?: Autopil
       ? "- Because a Paddie template visual contract is attached, do not consider the UI done until Preview + visual match verification passes or is clearly blocked."
       : "",
     autopilotGoalNeedsData(run.goal) ? `- ${paddieDataSkillInstruction()}` : "",
-    autopilotGoalNeedsPenpot(run.goal) || input?.selectedPenpot ? `- ${penpotMcpRuntimeInstruction()}` : "",
+    input?.selectedDesign
+      ? "- Use the attached Paddie Designer JSON as visual source-of-truth. Do not mutate the design unless writeback is explicitly allowed and approved."
+      : "",
     "- Run available install, test, typecheck, build, and lint commands when appropriate.",
     "- Detect or start a local preview when relevant, inspect browser/runtime errors when possible, and fix failures.",
     "- Ask before destructive file actions, git push/release/deploy, credential use, payments, external messages, or publishing.",
@@ -967,10 +964,6 @@ export function autopilotGoalNeedsData(goal: string) {
   return dataGoalNeedsPaddieSkill(goal)
 }
 
-export function autopilotGoalNeedsPenpot(goal: string) {
-  return penpotGoalNeedsDesign(goal)
-}
-
 export function selectedTemplateFromText(value: string) {
   const id = value.match(/PADDIE_TEMPLATE_ID:\s*([^\s]+)/i)?.[1]
   const name = value.match(/PADDIE_TEMPLATE_NAME:\s*(.+)/i)?.[1]?.trim()
@@ -1068,7 +1061,7 @@ export function autopilotPhaseStatuses(phase: AutopilotPhase): Partial<Record<Au
 }
 
 export function classifyAutopilotApproval(value: string) {
-  if (/\b(git\s+push|release|publish|deploy|payment|charge|credential|secret|api key|delete\s+-rf|remove-item\s+-recurse|penpot\s+(write|update|delete|create)|writeback)\b/i.test(value)) {
+  if (/\b(git\s+push|release|publish|deploy|payment|charge|credential|secret|api key|delete\s+-rf|remove-item\s+-recurse|design\s+(write|update|delete|create)|writeback)\b/i.test(value)) {
     return "approval-required"
   }
   return "safe"
@@ -1197,7 +1190,7 @@ function resourceCatalog(input?: AutopilotResourceInput) {
   return [
     templateCatalog(input),
     workflowCatalog(input),
-    penpotCatalog(input),
+    designerCatalog(input),
   ]
     .filter(Boolean)
     .join("\n\n")
@@ -1209,8 +1202,8 @@ function resourceContext(input?: AutopilotResourceInput) {
     selectedTemplateContext(input?.selectedTemplate),
     workflowCatalog(input),
     selectedWorkflowContext(input?.selectedWorkflow),
-    penpotCatalog(input),
-    selectedPenpotContext(input?.selectedPenpot),
+    designerCatalog(input),
+    selectedDesignContext(input?.selectedDesign),
   ]
     .filter(Boolean)
     .join("\n\n")
@@ -1295,20 +1288,18 @@ function selectedWorkflowContext(workflow: AutopilotWorkflowContext | undefined)
     .join("\n\n")
 }
 
-function penpotCatalog(input?: AutopilotResourceInput) {
-  if (input?.penpotAccess === "unavailable") {
-    return `Penpot MCP/design context: unavailable${input.penpotError ? ` (${input.penpotError})` : ""}.`
+function designerCatalog(input?: AutopilotResourceInput) {
+  if (input?.designerAccess === "unavailable") {
+    return `Paddie Designer context: unavailable${input.designerError ? ` (${input.designerError})` : ""}.`
   }
-  const designs = input?.penpotDesigns ?? []
+  const designs = input?.designs ?? []
   if (!designs.length) return ""
   return [
-    "Attached Penpot design context:",
+    "Attached Paddie Designer context:",
     ...designs.map((item) =>
       [
-        `- instance: ${item.instanceUrl}`,
-        `  mcp: ${item.mcpName}`,
-        `  file: ${item.fileName ? `${item.fileName} (${item.fileId})` : item.fileId}`,
-        `  page: ${item.pageName ? `${item.pageName} (${item.pageId})` : item.pageId}`,
+        `- design: ${item.designName} (${item.designId})`,
+        `  page: ${item.pageId}`,
         `  mode: ${item.mode}`,
         `  frames: ${item.frameNames.length ? item.frameNames.join(", ") : item.frameIds.join(", ") || "active"}`,
         `  writebackAllowed: ${item.writebackAllowed ? "true" : "false"}`,
@@ -1317,9 +1308,9 @@ function penpotCatalog(input?: AutopilotResourceInput) {
   ].join("\n")
 }
 
-function selectedPenpotContext(item: PenpotDesignContextPayload | undefined) {
+function selectedDesignContext(item: PaddieDesignContextPayload | undefined) {
   if (!item) return ""
-  return formatPenpotDesignNote(item)
+  return formatPaddieDesignNote(item)
 }
 
 function trimFiles(files: AutopilotTemplateContext["files"]) {

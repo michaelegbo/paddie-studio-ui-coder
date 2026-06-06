@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
+  createTemplateVisualContract,
+  formatTemplateVisualContract,
   previewDoc,
   previewHtml,
   previewUrl,
@@ -72,7 +74,7 @@ describe("template helpers", () => {
   test("uses RMN access metadata for template locks", () => {
     expect(templateCanAccess({ tier: "pro", can_access: true })).toBe(true)
     expect(templateCanAccess({ tier: "free", can_access: false })).toBe(false)
-    expect(templateCanAccess({ tier: "free" })).toBe(true)
+    expect(templateCanAccess({ tier: "free" })).toBe(false)
     expect(templateCanAccess({ tier: "pro" })).toBe(false)
   })
 
@@ -81,5 +83,30 @@ describe("template helpers", () => {
     expect(templateGalleryPreviewReady("x Preview unavailable y")).toBe(false)
     expect(templateGalleryPreviewReady("SSR build did not run")).toBe(false)
     expect(templateGalleryPreviewReady("")).toBe(false)
+  })
+
+  test("creates template visual contracts for full templates and selected elements", () => {
+    const template = tpl({
+      name: "Landing",
+      preview:
+        '<main><section class="hero"><h1>Launch faster</h1><button>Start</button></section></main><style>.hero{display:grid;gap:24px;color:#ff5a1f;transition:opacity 200ms}</style>',
+      parts: [{ id: "hero", name: "Hero", description: "Hero section", selectors: ["section.hero"], files: ["src/App.tsx"] }],
+      files: [{ path: "src/App.tsx", content: ".hero{font-family:Inter;font-size:48px;max-width:960px;animation:fade 300ms}" }],
+    })
+    const contract = createTemplateVisualContract(template, template.parts[0], {
+      selector: "main > section.hero",
+      label: "section.hero",
+      text: "Launch faster",
+      html: '<section class="hero"><h1>Launch faster</h1></section>',
+    })
+
+    expect(contract.templateName).toBe("Landing")
+    expect(contract.partName).toBe("Hero")
+    expect(contract.reference.kind).toBe("html")
+    expect(contract.viewports.map((viewport) => viewport.name)).toEqual(["desktop", "tablet", "mobile"])
+    expect(contract.styleSignals.text).toContain("Launch faster")
+    expect(contract.styleSignals.landmarks).toContain("main > section.hero")
+    expect(contract.styleSignals.colors).toContain("#ff5a1f")
+    expect(formatTemplateVisualContract(contract)).toContain("Template visual verification contract")
   })
 })

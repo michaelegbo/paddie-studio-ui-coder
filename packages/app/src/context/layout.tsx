@@ -18,6 +18,7 @@ const DEFAULT_SIDEBAR_WIDTH = 344
 const DEFAULT_FILE_TREE_WIDTH = 200
 const DEFAULT_SESSION_WIDTH = 600
 const DEFAULT_STUDIO_WIDTH = 820
+const DEFAULT_STUDIO_OPEN = true
 const DEFAULT_TERMINAL_HEIGHT = 280
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
 
@@ -744,7 +745,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const s = createMemo(() => store.sessionView[key()] ?? { scroll: {} })
         const terminalOpened = createMemo(() => store.terminal?.opened ?? false)
         const reviewPanelOpened = createMemo(() => store.review?.panelOpened ?? true)
-        const studioOpened = createMemo(() => s().studioOpen ?? false)
+        const studioOpened = createMemo(() => s().studioOpen ?? DEFAULT_STUDIO_OPEN)
         const studioChatHidden = createMemo(() => s().studioChatHidden ?? false)
 
         function setTerminalOpened(next: boolean) {
@@ -829,13 +830,17 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             close() {
               const session = key()
               const current = store.sessionView[session]
-              if (!current?.studioOpen) return
+              if (current?.studioOpen === false) return
+              if (!current) {
+                setStore("sessionView", session, { scroll: {}, studioOpen: false })
+                return
+              }
               setStore("sessionView", session, "studioOpen", false)
             },
             toggle() {
               const session = key()
               const current = store.sessionView[session]
-              const next = !(current?.studioOpen ?? false)
+              const next = !(current?.studioOpen ?? DEFAULT_STUDIO_OPEN)
               if (!current) {
                 setStore("sessionView", session, { scroll: {}, studioOpen: next })
                 return
