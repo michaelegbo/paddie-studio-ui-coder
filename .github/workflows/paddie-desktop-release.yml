@@ -252,6 +252,9 @@ jobs:
             }
             gh @releaseArgs
           }
+          else {
+            gh release edit $tag --repo $env:GITHUB_REPOSITORY --target $target --title $title --notes $notes
+          }
 
           gh release upload $tag `
             "${{ steps.assets.outputs.asset }}" `
@@ -313,6 +316,7 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
+            desktop-file-utils \
             patchelf \
             rpm
           sudo apt-get install -y --no-install-recommends libfuse2t64 || sudo apt-get install -y --no-install-recommends libfuse2
@@ -350,18 +354,17 @@ jobs:
             packages/desktop/src-tauri/sidecars/opencode-cli-x86_64-unknown-linux-gnu
           chmod +x packages/desktop/src-tauri/sidecars/opencode-cli-x86_64-unknown-linux-gnu
 
-      - name: Build Linux bundles
+      - name: Build Linux packages
         env:
           OPENCODE_VERSION: ${{ needs.windows.outputs.version }}
           OPENCODE_CHANNEL: prod
           VITE_OPENCODE_CHANNEL: prod
           RUST_TARGET: x86_64-unknown-linux-gnu
           TAURI_ENV_TARGET_TRIPLE: x86_64-unknown-linux-gnu
-          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
           bun run --cwd packages/desktop tauri build \
             --target x86_64-unknown-linux-gnu \
-            --bundles deb,rpm,appimage \
+            --bundles deb,rpm \
             --config src-tauri/tauri.prod.conf.json
 
       - name: Upload Linux release assets
@@ -373,22 +376,20 @@ jobs:
 
           deb="$(find packages/desktop/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb -name '*.deb' -type f | head -1)"
           rpm="$(find packages/desktop/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm -name '*.rpm' -type f | head -1)"
-          appimage="$(find packages/desktop/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage -name '*.AppImage' -type f | head -1)"
-          appimage_sig="$(find packages/desktop/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage -name '*.AppImage.sig' -type f | head -1)"
           test -n "$deb" || { echo "No .deb bundle found"; exit 1; }
           test -n "$rpm" || { echo "No .rpm bundle found"; exit 1; }
-          test -n "$appimage" || { echo "No AppImage bundle found"; exit 1; }
 
           deb_asset="$release_dir/PaddieStudio_${version}_linux_x64.deb"
           rpm_asset="$release_dir/PaddieStudio_${version}_linux_x64.rpm"
           appimage_asset="$release_dir/PaddieStudio_${version}_linux_x64.AppImage"
           tarball_asset="$release_dir/PaddieStudio_${version}_linux_x64.tar.gz"
           bundle_root="$release_dir/PaddieStudio_${version}_linux_x64"
+          appdir="$release_dir/PaddieStudio.AppDir"
           cp "$deb" "$deb_asset"
           cp "$rpm" "$rpm_asset"
-          cp "$appimage" "$appimage_asset"
-          mkdir -p "$bundle_root"
+          mkdir -p "$bundle_root" "$appdir"
           dpkg-deb -x "$deb" "$bundle_root"
+          dpkg-deb -x "$deb" "$appdir"
           entry="$(find "$bundle_root/usr/bin" -type f | head -1)"
           test -n "$entry" || { echo "No Linux executable found in extracted bundle"; exit 1; }
           entry_rel="${entry#$bundle_root/}"
@@ -401,13 +402,49 @@ jobs:
           chmod +x "$bundle_root/run-paddie-studio.sh"
           tar -C "$release_dir" -czf "$tarball_asset" "$(basename "$bundle_root")"
 
-          upload_assets=("$deb_asset" "$rpm_asset" "$appimage_asset" "$tarball_asset")
-          if [ -n "$appimage_sig" ]; then
-            appimage_sig_asset="$release_dir/PaddieStudio_${version}_linux_x64.AppImage.sig"
-            cp "$appimage_sig" "$appimage_sig_asset"
-            upload_assets+=("$appimage_sig_asset")
-            echo "appimage_sig=$appimage_sig_asset" >> "$GITHUB_OUTPUT"
+          app_entry="$(find "$appdir/usr/bin" -type f | head -1)"
+          desktop_file="$(find "$appdir/usr/share/applications" -name '*.desktop' -type f | head -1)"
+          test -n "$app_entry" || { echo "No Linux executable found in AppDir"; exit 1; }
+          test -n "$desktop_file" || { echo "No .desktop file found in AppDir"; exit 1; }
+
+          app_entry_rel="${app_entry#$appdir/}"
+          desktop_base="$(basename "$desktop_file")"
+          cp "$desktop_file" "$appdir/$desktop_base"
+          sed -i "s|^Exec=.*|Exec=AppRun|" "$appdir/$desktop_base"
+          chmod +x "$app_entry"
+
+          icon_name="$(grep -E '^Icon=' "$desktop_file" | head -1 | cut -d= -f2- || true)"
+          icon_file=""
+          if [ -n "$icon_name" ] && [ -d "$appdir/usr/share/icons" ]; then
+            icon_file="$(find "$appdir/usr/share/icons" -type f \( -name "$icon_name.png" -o -name "$icon_name.svg" -o -name "$icon_name.xpm" \) | sort | tail -1)"
           fi
+          if [ -z "$icon_file" ] && [ -d "$appdir/usr/share/icons" ]; then
+            icon_file="$(find "$appdir/usr/share/icons" -type f \( -name '*.png' -o -name '*.svg' -o -name '*.xpm' \) | sort | tail -1)"
+            if [ -n "$icon_file" ]; then
+              icon_name="paddie-studio"
+              sed -i "s|^Icon=.*|Icon=$icon_name|" "$appdir/$desktop_base"
+            fi
+          fi
+          if [ -n "$icon_file" ]; then
+            icon_ext="${icon_file##*.}"
+            cp "$icon_file" "$appdir/${icon_name}.${icon_ext}"
+          fi
+
+          cat > "$appdir/AppRun" <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "\$(dirname "\$(readlink -f "\$0")")"
+          exec "./$app_entry_rel" "\$@"
+          EOF
+          chmod +x "$appdir/AppRun"
+
+          appimagetool="$release_dir/appimagetool-x86_64.AppImage"
+          curl -L --fail --retry 5 -o "$appimagetool" https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x "$appimagetool"
+          ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$appimagetool" "$appdir" "$appimage_asset"
+          test -s "$appimage_asset" || { echo "No AppImage asset was produced"; exit 1; }
+
+          upload_assets=("$deb_asset" "$rpm_asset" "$appimage_asset" "$tarball_asset")
 
           gh release upload "v$version" "${upload_assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
 
