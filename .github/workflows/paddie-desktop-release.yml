@@ -444,13 +444,37 @@ jobs:
           ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$appimagetool" "$appdir" "$appimage_asset"
           test -s "$appimage_asset" || { echo "No AppImage asset was produced"; exit 1; }
 
-          upload_assets=("$deb_asset" "$rpm_asset" "$appimage_asset" "$tarball_asset")
+          bun run --cwd packages/desktop tauri signer sign "$appimage_asset"
+          appimage_sig_asset="$appimage_asset.sig"
+          test -s "$appimage_sig_asset" || { echo "No AppImage signature was produced"; exit 1; }
+
+          manifest="$release_dir/latest.json"
+          gh release download "v$version" --pattern latest.json --dir "$release_dir" --clobber --repo "$GITHUB_REPOSITORY"
+          signature="$(tr -d '\r\n' < "$appimage_sig_asset")"
+          node - "$manifest" "$version" "$signature" <<'NODE'
+          const fs = require("fs")
+
+          const manifestPath = process.argv[2]
+          const version = process.argv[3]
+          const signature = process.argv[4]
+          const url = `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/v${version}/PaddieStudio_${version}_linux_x64.AppImage`
+          const latest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
+
+          latest.platforms = latest.platforms || {}
+          latest.platforms["linux-x86_64"] = { signature, url }
+          latest.platforms["linux-x86_64-appimage"] = { signature, url }
+
+          fs.writeFileSync(manifestPath, `${JSON.stringify(latest, null, 2)}\n`)
+          NODE
+
+          upload_assets=("$deb_asset" "$rpm_asset" "$appimage_asset" "$appimage_sig_asset" "$tarball_asset" "$manifest")
 
           gh release upload "v$version" "${upload_assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
 
           echo "deb=$deb_asset" >> "$GITHUB_OUTPUT"
           echo "rpm=$rpm_asset" >> "$GITHUB_OUTPUT"
           echo "appimage=$appimage_asset" >> "$GITHUB_OUTPUT"
+          echo "appimage_sig=$appimage_sig_asset" >> "$GITHUB_OUTPUT"
           echo "tarball=$tarball_asset" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
