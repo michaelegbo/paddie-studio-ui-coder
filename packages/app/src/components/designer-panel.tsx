@@ -354,25 +354,25 @@ export function DesignerPanel(props: {
   })
 
   return (
-    <div class="grid min-h-[760px] grid-cols-[240px_minmax(0,1fr)_300px] overflow-hidden rounded-xl border border-border-weaker-base bg-background-base">
+    <div class="grid min-h-[780px] grid-cols-[248px_minmax(720px,1fr)_320px] overflow-hidden rounded-lg border border-border-weaker-base bg-background-base">
       <aside class="min-h-0 border-r border-border-weaker-base bg-surface-base flex flex-col">
-        <div class="border-b border-border-weaker-base p-3">
+        <div class="border-b border-border-weaker-base px-3 py-3">
           <div class="flex items-center justify-between gap-2">
             <div class="min-w-0">
-              <div class="truncate text-13-medium text-text-base">Designer</div>
+              <div class="truncate text-13-medium text-text-base">Files</div>
               <div class="truncate text-11-medium text-text-weak">{auth.isAuthenticated() ? "Cloud designs" : "Local designs"}</div>
             </div>
-            <Button variant="ghost" class="h-8 px-2 text-11-medium" onClick={newDesign}>
+            <Button variant="ghost" class="h-8 rounded-md px-2.5 text-11-medium" onClick={newDesign}>
               New
             </Button>
           </div>
         </div>
-        <div class="min-h-0 flex-1 overflow-auto p-2">
+        <div class="min-h-0 max-h-[220px] overflow-auto border-b border-border-weaker-base p-2">
           <For each={designs() ?? []}>
             {(item) => (
               <button
                 type="button"
-                class="mb-1 w-full rounded-lg px-2 py-2 text-left hover:bg-background-stronger"
+                class="mb-1 w-full rounded-md border border-transparent px-2 py-2 text-left hover:border-border-weaker-base hover:bg-background-stronger"
                 onClick={() => void loadDesign(item.id)}
               >
                 <div class="truncate text-12-medium text-text-base">{item.name}</div>
@@ -384,8 +384,11 @@ export function DesignerPanel(props: {
             <div class="p-2 text-12-medium text-text-weak">Loading designs...</div>
           </Show>
         </div>
-        <div class="border-t border-border-weaker-base p-2">
-          <div class="mb-2 text-11-medium text-text-weak">Layers</div>
+        <div class="min-h-0 flex-1 overflow-auto p-2">
+          <div class="mb-2 flex items-center justify-between px-1">
+            <div class="text-11-medium text-text-weak">Layers</div>
+            <div class="text-10-medium text-text-weak">{elements().length}</div>
+          </div>
           <For each={frames()}>
             {(frame) => (
               <div class="mb-1">
@@ -402,44 +405,59 @@ export function DesignerPanel(props: {
       </aside>
 
       <main class="min-w-0 min-h-0 flex flex-col">
-        <div class="min-h-11 border-b border-border-weaker-base bg-surface-base px-3 py-2 flex flex-wrap items-center gap-2">
+        <div class="min-h-12 border-b border-border-weaker-base bg-surface-base px-3 py-2 flex flex-wrap items-center gap-3">
           <input
-            class="h-8 w-56 rounded-lg border border-border-weaker-base bg-background-base px-2 text-12-medium text-text-base outline-none"
+            class="h-8 w-60 rounded-md border border-border-weaker-base bg-background-base px-2 text-12-medium text-text-base outline-none focus:border-border-weak-base"
             value={document().name}
             onInput={(event) => setDocument((current) => ({ ...current, name: event.currentTarget.value, updatedAt: new Date().toISOString() }))}
             aria-label="Design name"
           />
-          <ToolbarButton label="Frame" onClick={addFrame} />
-          <ToolbarButton label="Rect" onClick={() => addShape("rect")} />
-          <ToolbarButton label="Ellipse" onClick={() => addShape("ellipse")} />
-          <ToolbarButton label="Text" onClick={addText} />
-          <ToolbarButton label="Delete" onClick={removeSelected} disabled={!selectedIds().length} />
-          <div class="mx-1 h-5 w-px bg-border-weaker-base" />
-          <ToolbarButton label="Undo" onClick={undo} disabled={!undoStack().length} />
-          <ToolbarButton label="Redo" onClick={redo} disabled={!redoStack().length} />
+          <div class="rounded-md border border-border-weaker-base bg-background-base p-1 flex items-center gap-1">
+            <ToolbarButton label="Frame" onClick={addFrame} />
+            <ToolbarButton label="Rect" onClick={() => addShape("rect")} />
+            <ToolbarButton label="Ellipse" onClick={() => addShape("ellipse")} />
+            <ToolbarButton label="Text" onClick={addText} />
+          </div>
+          <div class="rounded-md border border-border-weaker-base bg-background-base p-1 flex items-center gap-1">
+            <ToolbarButton label="Undo" onClick={undo} disabled={!undoStack().length} />
+            <ToolbarButton label="Redo" onClick={redo} disabled={!redoStack().length} />
+            <ToolbarButton label="Delete" onClick={removeSelected} disabled={!selectedIds().length} />
+          </div>
           <div class="min-w-0 flex-1" />
-          <ToolbarButton label="JSON" onClick={exportJson} />
-          <ToolbarButton label="HTML" onClick={exportHtml} />
-          <Button class="h-8 px-3 text-11-medium" onClick={() => void saveDesign()} disabled={saving()}>
-            {saving() ? "Saving" : "Save"}
-          </Button>
+          <div class="rounded-md border border-border-weaker-base bg-background-base p-1 flex items-center gap-1">
+            <ToolbarButton label="JSON" onClick={exportJson} />
+            <ToolbarButton label="HTML" onClick={exportHtml} />
+            <Button class="h-8 rounded-md px-3 text-11-medium" onClick={() => void saveDesign()} disabled={saving()}>
+              {saving() ? "Saving" : "Save"}
+            </Button>
+          </div>
         </div>
 
-        <div class="min-h-0 flex-1 bg-[#0f0f0f]">
-          <DesignerCanvas
-            document={document()}
-            selectedIds={selectedIds()}
-            onSelect={(ids) => setSelectedIds(ids)}
-            onChange={(id, patch) => updateElement(id, patch)}
-          />
+        <div class="min-h-0 flex-1 overflow-auto bg-[#0b0b0c] p-4">
+          <div class="mb-3 flex items-center justify-between gap-3 text-11-medium text-text-weak">
+            <div class="truncate">{page()?.name ?? "Page"} / {frames().length} frames</div>
+            <div class="shrink-0">{selectedIds().length ? `${selectedIds().length} selected` : "No selection"}</div>
+          </div>
+          <div class="min-h-full min-w-[720px] overflow-hidden rounded-lg border border-border-weaker-base bg-[#0f0f0f] shadow-xs-border">
+            <DesignerCanvas
+              document={document()}
+              selectedIds={selectedIds()}
+              onSelect={(ids) => setSelectedIds(ids)}
+              onChange={(id, patch) => updateElement(id, patch)}
+            />
+          </div>
         </div>
 
-        <div class="border-t border-border-weaker-base bg-surface-base p-2 flex flex-wrap items-center gap-2">
-          <ToolbarButton label="Attach" onClick={() => attach("chat")} />
+        <div class="border-t border-border-weaker-base bg-surface-base px-3 py-2 flex flex-wrap items-center gap-2">
+          <div class="mr-1 text-11-medium text-text-weak">Send selected frames to</div>
+          <ToolbarButton label="Chat" onClick={() => attach("chat")} />
           <ToolbarButton label="Inspiration" onClick={() => attach("inspiration")} />
-          <ToolbarButton label="Build website" onClick={() => attach("website")} />
-          <ToolbarButton label="Create template" onClick={() => attach("template")} />
-          <ToolbarButton label="AI edit" onClick={() => void copyAiRequest()} />
+          <ToolbarButton label="Website" onClick={() => attach("website")} />
+          <ToolbarButton label="Template" onClick={() => attach("template")} />
+          <div class="min-w-0 flex-1" />
+          <Button class="h-8 rounded-md px-3 text-11-medium" onClick={() => void copyAiRequest()}>
+            AI edit
+          </Button>
         </div>
       </main>
 
@@ -453,49 +471,63 @@ export function DesignerPanel(props: {
         <div class="min-h-0 flex-1 overflow-auto p-3">
           <Show when={selectedElement()} fallback={<div class="text-12-medium text-text-weak">No selection.</div>}>
             {(item) => (
-              <div class="grid gap-3">
-                <InspectorText label="Name" value={item().name} onInput={(value) => updateElement(item().id, { name: value })} />
-                <div class="grid grid-cols-2 gap-2">
-                  <InspectorNumber label="X" value={item().x} onInput={(value) => updateElement(item().id, { x: value })} />
-                  <InspectorNumber label="Y" value={item().y} onInput={(value) => updateElement(item().id, { y: value })} />
-                  <InspectorNumber label="W" value={item().width} onInput={(value) => updateElement(item().id, { width: value })} />
-                  <InspectorNumber label="H" value={item().height} onInput={(value) => updateElement(item().id, { height: value })} />
+              <div class="grid gap-4">
+                <div class="grid gap-2">
+                  <InspectorText label="Name" value={item().name} onInput={(value) => updateElement(item().id, { name: value })} />
                 </div>
-                <InspectorText label="Fill" value={item().fill ?? ""} onInput={(value) => updateElement(item().id, { fill: value })} />
-                <InspectorText label="Stroke" value={item().stroke ?? ""} onInput={(value) => updateElement(item().id, { stroke: value || undefined })} />
-                <InspectorNumber label="Radius" value={item().radius ?? 0} onInput={(value) => updateElement(item().id, { radius: value })} />
+                <div class="grid gap-2 border-t border-border-weaker-base pt-3">
+                  <div class="text-11-medium text-text-weak">Position</div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <InspectorNumber label="X" value={item().x} onInput={(value) => updateElement(item().id, { x: value })} />
+                    <InspectorNumber label="Y" value={item().y} onInput={(value) => updateElement(item().id, { y: value })} />
+                    <InspectorNumber label="W" value={item().width} onInput={(value) => updateElement(item().id, { width: value })} />
+                    <InspectorNumber label="H" value={item().height} onInput={(value) => updateElement(item().id, { height: value })} />
+                  </div>
+                </div>
+                <div class="grid gap-2 border-t border-border-weaker-base pt-3">
+                  <div class="text-11-medium text-text-weak">Appearance</div>
+                  <InspectorText label="Fill" value={item().fill ?? ""} onInput={(value) => updateElement(item().id, { fill: value })} />
+                  <InspectorText label="Stroke" value={item().stroke ?? ""} onInput={(value) => updateElement(item().id, { stroke: value || undefined })} />
+                  <InspectorNumber label="Radius" value={item().radius ?? 0} onInput={(value) => updateElement(item().id, { radius: value })} />
+                </div>
                 <Show when={item().type === "text"}>
-                  <InspectorText label="Text" value={item().text ?? ""} onInput={(value) => updateElement(item().id, { text: value })} multiline />
-                  <InspectorNumber label="Font size" value={item().fontSize ?? 16} onInput={(value) => updateElement(item().id, { fontSize: value })} />
+                  <div class="grid gap-2 border-t border-border-weaker-base pt-3">
+                    <div class="text-11-medium text-text-weak">Text</div>
+                    <InspectorText label="Content" value={item().text ?? ""} onInput={(value) => updateElement(item().id, { text: value })} multiline />
+                    <InspectorNumber label="Font size" value={item().fontSize ?? 16} onInput={(value) => updateElement(item().id, { fontSize: value })} />
+                  </div>
                 </Show>
               </div>
             )}
           </Show>
 
           <div class="mt-6 border-t border-border-weaker-base pt-4">
-            <div class="text-13-medium text-text-base">AI operations</div>
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-13-medium text-text-base">AI operations</div>
+              <div class="text-10-medium text-text-weak">JSON ops</div>
+            </div>
             <textarea
-              class="mt-2 h-20 w-full resize-none rounded-lg border border-border-weaker-base bg-background-base p-2 text-12-regular text-text-base outline-none"
+              class="mt-2 h-20 w-full resize-none rounded-md border border-border-weaker-base bg-background-base p-2 text-12-regular text-text-base outline-none focus:border-border-weak-base"
               value={aiPrompt()}
               onInput={(event) => setAiPrompt(event.currentTarget.value)}
               aria-label="AI design prompt"
             />
             <div class="mt-2 flex gap-2">
-              <Button variant="ghost" class="h-8 px-2 text-11-medium" onClick={draftFromPrompt}>
+              <Button variant="ghost" class="h-8 rounded-md px-2.5 text-11-medium" onClick={draftFromPrompt}>
                 Draft ops
               </Button>
-              <Button variant="ghost" class="h-8 px-2 text-11-medium" onClick={() => void copyAiRequest()}>
+              <Button variant="ghost" class="h-8 rounded-md px-2.5 text-11-medium" onClick={() => void copyAiRequest()}>
                 Request ops
               </Button>
             </div>
             <textarea
-              class="mt-3 h-44 w-full resize-none rounded-lg border border-border-weaker-base bg-background-base p-2 font-mono text-11-regular text-text-base outline-none"
+              class="mt-3 h-44 w-full resize-none rounded-md border border-border-weaker-base bg-background-base p-2 font-mono text-11-regular text-text-base outline-none focus:border-border-weak-base"
               value={opsText()}
               onInput={(event) => setOpsText(event.currentTarget.value)}
               placeholder='[{"type":"createFrame","name":"Hero"}]'
               aria-label="Paddie Designer JSON operations"
             />
-            <Button class="mt-2 h-8 w-full justify-center text-11-medium" onClick={applyOps}>
+            <Button class="mt-2 h-8 w-full justify-center rounded-md text-11-medium" onClick={applyOps}>
               Apply JSON ops
             </Button>
           </div>
@@ -516,11 +548,23 @@ function DesignerCanvas(props: {
   let layer: Konva.Layer | undefined
   let transformer: Konva.Transformer | undefined
   let observer: ResizeObserver | undefined
+  let resizeFrame = 0
   const nodeMap = new Map<string, Konva.Node>()
+  const [viewport, setViewport] = createSignal({ width: 720, height: 560 })
+
+  const resizeStage = () => {
+    if (!host || !stage) return
+    const next = {
+      width: Math.max(720, Math.floor(host.clientWidth)),
+      height: Math.max(560, Math.floor(host.clientHeight)),
+    }
+    stage.size(next)
+    setViewport((current) => (current.width === next.width && current.height === next.height ? current : next))
+  }
 
   onMount(() => {
     if (!host) return
-    stage = new Konva.Stage({ container: host, width: host.clientWidth, height: host.clientHeight })
+    stage = new Konva.Stage({ container: host, width: viewport().width, height: viewport().height })
     layer = new Konva.Layer()
     transformer = new Konva.Transformer({
       rotateEnabled: false,
@@ -535,12 +579,14 @@ function DesignerCanvas(props: {
       if (event.target === stage) props.onSelect([])
     })
     observer = new ResizeObserver(() => {
-      if (!host || !stage) return
-      stage.size({ width: host.clientWidth, height: host.clientHeight })
-      stage.batchDraw()
+      cancelAnimationFrame(resizeFrame)
+      resizeFrame = requestAnimationFrame(resizeStage)
     })
     observer.observe(host)
+    resizeStage()
+    resizeFrame = requestAnimationFrame(resizeStage)
     onCleanup(() => {
+      cancelAnimationFrame(resizeFrame)
       observer?.disconnect()
       stage?.destroy()
     })
@@ -548,9 +594,10 @@ function DesignerCanvas(props: {
 
   createEffect(() => {
     if (!stage || !layer || !transformer) return
+    const size = viewport()
     nodeMap.clear()
     layer.destroyChildren()
-    drawGrid(layer, stage.width(), stage.height())
+    drawGrid(layer, size.width, size.height)
     designFrames(props.document).forEach((frame) => drawElement(layer!, frame, props))
     designElements(props.document)
       .filter((item) => item.type !== "frame")
@@ -641,7 +688,7 @@ function DesignerCanvas(props: {
     }
   }
 
-  return <div ref={host} class="h-full w-full" />
+  return <div ref={host} class="h-full min-h-[560px] w-full" />
 }
 
 function drawGrid(layer: Konva.Layer, width: number, height: number) {
@@ -656,7 +703,12 @@ function drawGrid(layer: Konva.Layer, width: number, height: number) {
 
 function ToolbarButton(props: { label: string; onClick: VoidFunction; disabled?: boolean }) {
   return (
-    <Button variant="ghost" class="h-8 px-2 text-11-medium" onClick={props.onClick} disabled={props.disabled}>
+    <Button
+      variant="ghost"
+      class="h-8 rounded-md border border-transparent px-2.5 text-11-medium text-text-base hover:border-border-weaker-base hover:bg-surface-base-hover disabled:text-text-disabled"
+      onClick={props.onClick}
+      disabled={props.disabled}
+    >
       {props.label}
     </Button>
   )
@@ -666,12 +718,17 @@ function LayerButton(props: { item: PaddieDesignElement; selected: boolean; onSe
   return (
     <button
       type="button"
-      class={`mb-1 w-full rounded-md px-2 py-1.5 text-left text-11-medium ${
-        props.selected ? "bg-background-stronger text-text-base" : "text-text-weak hover:bg-background-stronger"
+      class={`mb-1 w-full rounded-md border px-2 py-1.5 text-left text-11-medium ${
+        props.selected
+          ? "border-border-weak-base bg-background-stronger text-text-base"
+          : "border-transparent text-text-weak hover:border-border-weaker-base hover:bg-background-stronger"
       }`}
       onClick={props.onSelect}
     >
-      <span class="truncate">{props.item.name}</span>
+      <span class="flex min-w-0 items-center gap-2">
+        <span class="w-12 shrink-0 text-10-medium uppercase text-text-weak">{props.item.type}</span>
+        <span class="truncate">{props.item.name}</span>
+      </span>
     </button>
   )
 }
@@ -684,14 +741,14 @@ function InspectorText(props: { label: string; value: string; onInput: (value: s
         when={props.multiline}
         fallback={
           <input
-            class="h-8 rounded-lg border border-border-weaker-base bg-background-base px-2 text-12-medium text-text-base outline-none"
+            class="h-8 rounded-md border border-border-weaker-base bg-background-base px-2 text-12-medium text-text-base outline-none focus:border-border-weak-base"
             value={props.value}
             onInput={(event) => props.onInput(event.currentTarget.value)}
           />
         }
       >
         <textarea
-          class="h-20 resize-none rounded-lg border border-border-weaker-base bg-background-base p-2 text-12-medium text-text-base outline-none"
+          class="h-20 resize-none rounded-md border border-border-weaker-base bg-background-base p-2 text-12-medium text-text-base outline-none focus:border-border-weak-base"
           value={props.value}
           onInput={(event) => props.onInput(event.currentTarget.value)}
         />
@@ -706,7 +763,7 @@ function InspectorNumber(props: { label: string; value: number; onInput: (value:
       {props.label}
       <input
         type="number"
-        class="h-8 rounded-lg border border-border-weaker-base bg-background-base px-2 text-12-medium text-text-base outline-none"
+        class="h-8 rounded-md border border-border-weaker-base bg-background-base px-2 text-12-medium text-text-base outline-none focus:border-border-weak-base"
         value={props.value}
         onInput={(event) => props.onInput(Number(event.currentTarget.value) || 0)}
       />
