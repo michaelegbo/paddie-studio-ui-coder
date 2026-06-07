@@ -285,16 +285,16 @@ jobs:
         env:
           PADDIE_DOWNLOADS_HOST: ${{ secrets.PADDIE_DOWNLOADS_HOST }}
           PADDIE_DOWNLOADS_USER: ${{ secrets.PADDIE_DOWNLOADS_USER }}
-          PADDIE_DOWNLOADS_SSH_KEY: ${{ secrets.PADDIE_DOWNLOADS_SSH_KEY }}
+          PADDIE_DOWNLOADS_SSH_KEY_B64: ${{ secrets.PADDIE_DOWNLOADS_SSH_KEY_B64 }}
         run: |
-          if (-not $env:PADDIE_DOWNLOADS_HOST -or -not $env:PADDIE_DOWNLOADS_USER -or -not $env:PADDIE_DOWNLOADS_SSH_KEY) {
-            throw "PADDIE_DOWNLOADS_HOST, PADDIE_DOWNLOADS_USER, and PADDIE_DOWNLOADS_SSH_KEY are required to publish updater assets outside GitHub."
+          if (-not $env:PADDIE_DOWNLOADS_HOST -or -not $env:PADDIE_DOWNLOADS_USER -or -not $env:PADDIE_DOWNLOADS_SSH_KEY_B64) {
+            throw "PADDIE_DOWNLOADS_HOST, PADDIE_DOWNLOADS_USER, and PADDIE_DOWNLOADS_SSH_KEY_B64 are required to publish updater assets outside GitHub."
           }
 
           $sshDir = Join-Path $HOME ".ssh"
           New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
           $keyPath = Join-Path $sshDir "paddie-downloads"
-          $env:PADDIE_DOWNLOADS_SSH_KEY -replace "`r", "" | Set-Content -LiteralPath $keyPath -NoNewline
+          [IO.File]::WriteAllBytes($keyPath, [Convert]::FromBase64String($env:PADDIE_DOWNLOADS_SSH_KEY_B64))
           icacls $keyPath /inheritance:r /grant:r "$($env:USERNAME):R" | Out-Null
 
           $remote = "$($env:PADDIE_DOWNLOADS_USER)@$($env:PADDIE_DOWNLOADS_HOST)"
@@ -485,14 +485,14 @@ jobs:
         env:
           PADDIE_DOWNLOADS_HOST: ${{ secrets.PADDIE_DOWNLOADS_HOST }}
           PADDIE_DOWNLOADS_USER: ${{ secrets.PADDIE_DOWNLOADS_USER }}
-          PADDIE_DOWNLOADS_SSH_KEY: ${{ secrets.PADDIE_DOWNLOADS_SSH_KEY }}
+          PADDIE_DOWNLOADS_SSH_KEY_B64: ${{ secrets.PADDIE_DOWNLOADS_SSH_KEY_B64 }}
         run: |
           test -n "$PADDIE_DOWNLOADS_HOST" || { echo "PADDIE_DOWNLOADS_HOST is required"; exit 1; }
           test -n "$PADDIE_DOWNLOADS_USER" || { echo "PADDIE_DOWNLOADS_USER is required"; exit 1; }
-          test -n "$PADDIE_DOWNLOADS_SSH_KEY" || { echo "PADDIE_DOWNLOADS_SSH_KEY is required"; exit 1; }
+          test -n "$PADDIE_DOWNLOADS_SSH_KEY_B64" || { echo "PADDIE_DOWNLOADS_SSH_KEY_B64 is required"; exit 1; }
 
           mkdir -p ~/.ssh
-          printf '%s' "$PADDIE_DOWNLOADS_SSH_KEY" | tr -d '\r' > ~/.ssh/paddie-downloads
+          printf '%s' "$PADDIE_DOWNLOADS_SSH_KEY_B64" | base64 -d > ~/.ssh/paddie-downloads
           chmod 600 ~/.ssh/paddie-downloads
 
           remote="$PADDIE_DOWNLOADS_USER@$PADDIE_DOWNLOADS_HOST"
