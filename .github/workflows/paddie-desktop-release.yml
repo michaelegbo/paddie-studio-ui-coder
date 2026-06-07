@@ -288,7 +288,7 @@ jobs:
   linux:
     needs: windows
     if: needs.windows.outputs.should_release == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     env:
       GH_TOKEN: ${{ github.token }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
