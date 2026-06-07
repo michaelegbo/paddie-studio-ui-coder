@@ -207,7 +207,7 @@ jobs:
           Copy-Item -LiteralPath $exe.FullName -Destination $assetPath -Force
           Copy-Item -LiteralPath $signature.FullName -Destination $signaturePath -Force
 
-          $url = "https://github.com/${{ github.repository }}/releases/download/v$version/$assetName"
+          $url = "https://paddie.io/downloads/studio/$assetName"
           $entry = [ordered]@{
             signature = (Get-Content -Raw -LiteralPath $signature.FullName).Trim()
             url = $url
@@ -278,6 +278,32 @@ jobs:
 
             gh release upload $rollingTag "${{ steps.assets.outputs.manifest }}" --clobber --repo $env:GITHUB_REPOSITORY
           }
+
+      - name: Mirror Windows updater assets to Paddie downloads
+        if: steps.release_gate.outputs.should_release == 'true'
+        shell: pwsh
+        env:
+          PADDIE_DOWNLOADS_HOST: ${{ secrets.PADDIE_DOWNLOADS_HOST }}
+          PADDIE_DOWNLOADS_USER: ${{ secrets.PADDIE_DOWNLOADS_USER }}
+          PADDIE_DOWNLOADS_SSH_KEY: ${{ secrets.PADDIE_DOWNLOADS_SSH_KEY }}
+        run: |
+          if (-not $env:PADDIE_DOWNLOADS_HOST -or -not $env:PADDIE_DOWNLOADS_USER -or -not $env:PADDIE_DOWNLOADS_SSH_KEY) {
+            throw "PADDIE_DOWNLOADS_HOST, PADDIE_DOWNLOADS_USER, and PADDIE_DOWNLOADS_SSH_KEY are required to publish updater assets outside GitHub."
+          }
+
+          $sshDir = Join-Path $HOME ".ssh"
+          New-Item -ItemType Directory -Force -Path $sshDir | Out-Null
+          $keyPath = Join-Path $sshDir "paddie-downloads"
+          $env:PADDIE_DOWNLOADS_SSH_KEY -replace "`r", "" | Set-Content -LiteralPath $keyPath -NoNewline
+          icacls $keyPath /inheritance:r /grant:r "$($env:USERNAME):R" | Out-Null
+
+          $remote = "$($env:PADDIE_DOWNLOADS_USER)@$($env:PADDIE_DOWNLOADS_HOST)"
+          ssh -i $keyPath -o StrictHostKeyChecking=no $remote "mkdir -p /home/azureuser/paddie-studio-downloads/studio"
+          scp -i $keyPath -o StrictHostKeyChecking=no `
+            "${{ steps.assets.outputs.asset }}" `
+            "${{ steps.assets.outputs.signature }}" `
+            "${{ steps.assets.outputs.manifest }}" `
+            "${remote}:/home/azureuser/paddie-studio-downloads/studio/"
 
       - uses: actions/upload-artifact@v4
         if: ${{ always() && steps.assets.outputs.asset != '' }}
@@ -364,7 +390,7 @@ jobs:
         run: |
           bun run --cwd packages/desktop tauri build \
             --target x86_64-unknown-linux-gnu \
-            --bundles deb,rpm \
+            --bundles deb \
             --config src-tauri/tauri.prod.conf.json
 
       - name: Upload Linux release assets
@@ -375,32 +401,12 @@ jobs:
           mkdir -p "$release_dir"
 
           deb="$(find packages/desktop/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb -name '*.deb' -type f | head -1)"
-          rpm="$(find packages/desktop/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm -name '*.rpm' -type f | head -1)"
           test -n "$deb" || { echo "No .deb bundle found"; exit 1; }
-          test -n "$rpm" || { echo "No .rpm bundle found"; exit 1; }
 
-          deb_asset="$release_dir/PaddieStudio_${version}_linux_x64.deb"
-          rpm_asset="$release_dir/PaddieStudio_${version}_linux_x64.rpm"
           appimage_asset="$release_dir/PaddieStudio_${version}_linux_x64.AppImage"
-          tarball_asset="$release_dir/PaddieStudio_${version}_linux_x64.tar.gz"
-          bundle_root="$release_dir/PaddieStudio_${version}_linux_x64"
           appdir="$release_dir/PaddieStudio.AppDir"
-          cp "$deb" "$deb_asset"
-          cp "$rpm" "$rpm_asset"
-          mkdir -p "$bundle_root" "$appdir"
-          dpkg-deb -x "$deb" "$bundle_root"
+          mkdir -p "$appdir"
           dpkg-deb -x "$deb" "$appdir"
-          entry="$(find "$bundle_root/usr/bin" -type f | head -1)"
-          test -n "$entry" || { echo "No Linux executable found in extracted bundle"; exit 1; }
-          entry_rel="${entry#$bundle_root/}"
-          cat > "$bundle_root/run-paddie-studio.sh" <<EOF
-          #!/usr/bin/env bash
-          set -euo pipefail
-          cd "\$(dirname "\$0")"
-          exec "./$entry_rel" "\$@"
-          EOF
-          chmod +x "$bundle_root/run-paddie-studio.sh"
-          tar -C "$release_dir" -czf "$tarball_asset" "$(basename "$bundle_root")"
 
           app_entry="$(find "$appdir/usr/bin" -type f | head -1)"
           desktop_file="$(find "$appdir/usr/share/applications" -name '*.desktop' -type f | head -1)"
@@ -457,7 +463,7 @@ jobs:
           const manifestPath = process.argv[2]
           const version = process.argv[3]
           const signature = process.argv[4]
-          const url = `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/download/v${version}/PaddieStudio_${version}_linux_x64.AppImage`
+          const url = `https://paddie.io/downloads/studio/PaddieStudio_${version}_linux_x64.AppImage`
           const latest = JSON.parse(fs.readFileSync(manifestPath, "utf8"))
 
           latest.platforms = latest.platforms || {}
@@ -467,23 +473,40 @@ jobs:
           fs.writeFileSync(manifestPath, `${JSON.stringify(latest, null, 2)}\n`)
           NODE
 
-          upload_assets=("$deb_asset" "$rpm_asset" "$appimage_asset" "$appimage_sig_asset" "$tarball_asset" "$manifest")
+          upload_assets=("$appimage_asset" "$appimage_sig_asset" "$manifest")
 
           gh release upload "v$version" "${upload_assets[@]}" --clobber --repo "$GITHUB_REPOSITORY"
 
-          echo "deb=$deb_asset" >> "$GITHUB_OUTPUT"
-          echo "rpm=$rpm_asset" >> "$GITHUB_OUTPUT"
           echo "appimage=$appimage_asset" >> "$GITHUB_OUTPUT"
           echo "appimage_sig=$appimage_sig_asset" >> "$GITHUB_OUTPUT"
-          echo "tarball=$tarball_asset" >> "$GITHUB_OUTPUT"
+
+      - name: Mirror Linux updater assets to Paddie downloads
+        if: steps.linux_assets.outputs.appimage != ''
+        env:
+          PADDIE_DOWNLOADS_HOST: ${{ secrets.PADDIE_DOWNLOADS_HOST }}
+          PADDIE_DOWNLOADS_USER: ${{ secrets.PADDIE_DOWNLOADS_USER }}
+          PADDIE_DOWNLOADS_SSH_KEY: ${{ secrets.PADDIE_DOWNLOADS_SSH_KEY }}
+        run: |
+          test -n "$PADDIE_DOWNLOADS_HOST" || { echo "PADDIE_DOWNLOADS_HOST is required"; exit 1; }
+          test -n "$PADDIE_DOWNLOADS_USER" || { echo "PADDIE_DOWNLOADS_USER is required"; exit 1; }
+          test -n "$PADDIE_DOWNLOADS_SSH_KEY" || { echo "PADDIE_DOWNLOADS_SSH_KEY is required"; exit 1; }
+
+          mkdir -p ~/.ssh
+          printf '%s' "$PADDIE_DOWNLOADS_SSH_KEY" | tr -d '\r' > ~/.ssh/paddie-downloads
+          chmod 600 ~/.ssh/paddie-downloads
+
+          remote="$PADDIE_DOWNLOADS_USER@$PADDIE_DOWNLOADS_HOST"
+          ssh -i ~/.ssh/paddie-downloads -o StrictHostKeyChecking=no "$remote" "mkdir -p /home/azureuser/paddie-studio-downloads/studio"
+          scp -i ~/.ssh/paddie-downloads -o StrictHostKeyChecking=no \
+            "${{ steps.linux_assets.outputs.appimage }}" \
+            "${{ steps.linux_assets.outputs.appimage_sig }}" \
+            "$RUNNER_TEMP/paddie-desktop-linux-release/latest.json" \
+            "$remote:/home/azureuser/paddie-studio-downloads/studio/"
 
       - uses: actions/upload-artifact@v4
-        if: ${{ always() && steps.linux_assets.outputs.deb != '' }}
+        if: ${{ always() && steps.linux_assets.outputs.appimage != '' }}
         with:
           name: paddie-desktop-linux-${{ needs.windows.outputs.version }}
           path: |
-            ${{ steps.linux_assets.outputs.deb }}
-            ${{ steps.linux_assets.outputs.rpm }}
             ${{ steps.linux_assets.outputs.appimage }}
             ${{ steps.linux_assets.outputs.appimage_sig }}
-            ${{ steps.linux_assets.outputs.tarball }}
