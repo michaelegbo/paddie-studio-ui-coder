@@ -55,6 +55,8 @@ export function DesignerPanel(props: {
   const [saving, setSaving] = createSignal(false)
   const [opsText, setOpsText] = createSignal("")
   const [aiPrompt, setAiPrompt] = createSignal("Design a polished SaaS landing page hero with a pricing card.")
+  const [fullscreen, setFullscreen] = createSignal(false)
+  const [view, setView] = createSignal<"library" | "editor">("library")
   const [designs, designsApi] = createResource(
     () => ({ token: auth.token(), reload: reload() }),
     async (input) => {
@@ -73,9 +75,16 @@ export function DesignerPanel(props: {
   const selectedFrameIds = createMemo(() => {
     const selectedFrames = selected().filter((item): item is PaddieDesignFrame => item.type === "frame")
     if (selectedFrames.length) return selectedFrames.map((item) => item.id)
-    const fromChildren = selected().flatMap((item) => item.parentId ? [item.parentId] : [])
+    const fromChildren = [...new Set(selected().flatMap((item) => item.parentId ? [item.parentId] : []))]
     if (fromChildren.length) return fromChildren
     return frames().slice(0, 1).map((item) => item.id)
+  })
+
+  createEffect(() => {
+    const active = page()
+    const ids = selectedIds()
+    const next = active ? ids.filter((id, index) => active.elements[id] && ids.indexOf(id) === index) : []
+    if (next.length !== ids.length) setSelectedIds(next)
   })
 
   const commit = (label: string, next: (current: PaddieDesignDocument) => PaddieDesignDocument) => {
@@ -105,10 +114,10 @@ export function DesignerPanel(props: {
   }
 
   const addFrame = () => {
+    const id = createDesignerId("frame")
     commit("Add frame", (current) => {
       const active = currentDesignPage(current)
       if (!active) return current
-      const id = createDesignerId("frame")
       active.elements[id] = {
         id,
         type: "frame",
@@ -123,20 +132,21 @@ export function DesignerPanel(props: {
         radius: 14,
       }
       active.frameIds = [...active.frameIds, id]
-      setSelectedIds([id])
       return { ...current, updatedAt: new Date().toISOString() }
     })
+    setSelectedIds([id])
   }
 
   const addShape = (type: "rect" | "ellipse") => {
+    const id = createDesignerId("shape")
+    const parentId = selectedFrameIds()[0]
     commit(`Add ${type}`, (current) => {
       const active = currentDesignPage(current)
       if (!active) return current
-      const id = createDesignerId("shape")
       active.elements[id] = {
         id,
         type,
-        parentId: selectedFrameIds()[0],
+        parentId,
         name: type === "rect" ? "Rectangle" : "Ellipse",
         x: 180,
         y: 170,
@@ -145,20 +155,21 @@ export function DesignerPanel(props: {
         fill: current.tokens.colors.accent,
         radius: type === "rect" ? 8 : undefined,
       }
-      setSelectedIds([id])
       return { ...current, updatedAt: new Date().toISOString() }
     })
+    setSelectedIds([id])
   }
 
   const addText = () => {
+    const id = createDesignerId("text")
+    const parentId = selectedFrameIds()[0]
     commit("Add text", (current) => {
       const active = currentDesignPage(current)
       if (!active) return current
-      const id = createDesignerId("text")
       active.elements[id] = {
         id,
         type: "text",
-        parentId: selectedFrameIds()[0],
+        parentId,
         name: "Text",
         x: 190,
         y: 190,
@@ -170,9 +181,9 @@ export function DesignerPanel(props: {
         fontWeight: 650,
         lineHeight: 1.15,
       }
-      setSelectedIds([id])
       return { ...current, updatedAt: new Date().toISOString() }
     })
+    setSelectedIds([id])
   }
 
   const removeSelected = () => {
@@ -212,26 +223,44 @@ export function DesignerPanel(props: {
   const newDesign = () => {
     const next = createDefaultDesignDocument("Untitled design")
     setDocument(next)
-    setSelectedIds(designFrames(next).slice(0, 1).map((item) => item.id))
+    setSelectedIds([])
     setUndoStack([])
     setRedoStack([])
+    setFullscreen(false)
+    setView("editor")
   }
 
   const loadDesign = async (id: string) => {
     if (!auth.token()) {
       const found = localPayloads().find((item) => item.id === id)
-      if (found) setDocument(found.document)
+      if (found) {
+        setDocument(found.document)
+        setSelectedIds([])
+        setUndoStack([])
+        setRedoStack([])
+        setFullscreen(false)
+        setView("editor")
+      }
       return
     }
     try {
       const payload = await paddieApi.get<DesignerPayload>(`/studio/designs/${encodeURIComponent(id)}`)
       setDocument(payload.document)
-      setSelectedIds(designFrames(payload.document).slice(0, 1).map((item) => item.id))
+      setSelectedIds([])
       setUndoStack([])
       setRedoStack([])
+      setFullscreen(false)
+      setView("editor")
     } catch (err) {
       showToast({ variant: "error", title: "Could not open design", description: paddieApiErrorMessage(err) })
     }
+  }
+
+  const openLibrary = () => {
+    setFullscreen(false)
+    setView("library")
+    setReload((value) => value + 1)
+    void designsApi.refetch()
   }
 
   const saveDesign = async () => {
@@ -343,18 +372,79 @@ export function DesignerPanel(props: {
   const exportJson = () => download(`${document().name || "design"}.json`, JSON.stringify(document(), null, 2), "application/json")
   const exportHtml = () => download(`${document().name || "design"}.html`, generateHtmlReference(document(), selectedFrameIds()), "text/html")
 
-  onMount(() => {
-    setSelectedIds(frames().slice(0, 1).map((item) => item.id))
-  })
-
   createEffect(() => {
     if (auth.token()) return
     const first = localPayloads()[0]
-    if (first) setDocument(first.document)
+    if (!first) return
+    setDocument(first.document)
+    setSelectedIds([])
   })
 
   return (
-    <div class="grid min-h-[780px] grid-cols-[248px_minmax(720px,1fr)_320px] overflow-hidden rounded-lg border border-border-weaker-base bg-background-base">
+    <Show
+      when={view() === "editor"}
+      fallback={
+        <div data-testid="designer-library" class="min-h-[680px] overflow-hidden rounded-lg border border-border-weaker-base bg-background-base">
+          <div class="border-b border-border-weaker-base bg-surface-base px-4 py-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="truncate text-14-medium text-text-base">Designer files</div>
+                <div class="mt-1 truncate text-12-regular text-text-weak">
+                  {auth.isAuthenticated() ? "Cloud designs synced to Paddie." : "Local designs on this device."}
+                </div>
+              </div>
+              <Button class="h-8 rounded-md px-3 text-12-medium" onClick={newDesign}>
+                Create design
+              </Button>
+            </div>
+          </div>
+          <div class="p-3">
+            <div class="grid grid-cols-[minmax(0,1fr)_96px_160px_72px] border-b border-border-weaker-base px-2 py-2 text-11-medium text-text-weak">
+              <div>Name</div>
+              <div>Frames</div>
+              <div>Updated</div>
+              <div class="text-right">Action</div>
+            </div>
+            <Show when={designs.loading}>
+              <div class="px-2 py-5 text-12-medium text-text-weak">Loading designs...</div>
+            </Show>
+            <For each={designs() ?? []}>
+              {(item) => (
+                <button
+                  type="button"
+                  data-testid="designer-design-row"
+                  class="grid w-full grid-cols-[minmax(0,1fr)_96px_160px_72px] items-center border-b border-border-weaker-base px-2 py-3 text-left hover:bg-surface-base-hover"
+                  onClick={() => void loadDesign(item.id)}
+                >
+                  <span class="min-w-0 truncate text-13-medium text-text-base">{item.name}</span>
+                  <span class="text-12-regular text-text-weak">{item.frameCount}</span>
+                  <span class="truncate text-12-regular text-text-weak">{formatDesignerDate(item.updatedAt)}</span>
+                  <span class="text-right text-12-medium text-text-base">Open</span>
+                </button>
+              )}
+            </For>
+            <Show when={!designs.loading && !(designs()?.length)}>
+              <div class="grid min-h-[360px] place-items-center border-b border-border-weaker-base">
+                <div class="max-w-sm text-center">
+                  <div class="text-14-medium text-text-base">No designs yet</div>
+                  <div class="mt-2 text-12-regular text-text-weak">
+                    Create a design file, save it, then return here to open it again.
+                  </div>
+                  <Button class="mt-4 h-8 rounded-md px-3 text-12-medium" onClick={newDesign}>
+                    Create design
+                  </Button>
+                </div>
+              </div>
+            </Show>
+          </div>
+        </div>
+      }
+    >
+      <div
+        data-testid="designer-workspace"
+        class={`${fullscreen() ? "fixed inset-2 z-[1000]" : "min-h-[780px]"} grid grid-cols-[248px_minmax(720px,1fr)_320px] overflow-hidden rounded-lg border border-border-weaker-base bg-background-base`}
+        style={fullscreen() ? { height: "calc(100vh - 16px)" } : undefined}
+      >
       <aside class="min-h-0 border-r border-border-weaker-base bg-surface-base flex flex-col">
         <div class="border-b border-border-weaker-base px-3 py-3">
           <div class="flex items-center justify-between gap-2">
@@ -362,9 +452,14 @@ export function DesignerPanel(props: {
               <div class="truncate text-13-medium text-text-base">Files</div>
               <div class="truncate text-11-medium text-text-weak">{auth.isAuthenticated() ? "Cloud designs" : "Local designs"}</div>
             </div>
-            <Button variant="ghost" class="h-8 rounded-md px-2.5 text-11-medium" onClick={newDesign}>
-              New
-            </Button>
+            <div class="flex shrink-0 items-center gap-1">
+              <Button variant="ghost" class="h-8 rounded-md px-2.5 text-11-medium" onClick={openLibrary}>
+                Back
+              </Button>
+              <Button variant="ghost" class="h-8 rounded-md px-2.5 text-11-medium" onClick={newDesign}>
+                New
+              </Button>
+            </div>
           </div>
         </div>
         <div class="min-h-0 max-h-[220px] overflow-auto border-b border-border-weaker-base p-2">
@@ -392,10 +487,20 @@ export function DesignerPanel(props: {
           <For each={frames()}>
             {(frame) => (
               <div class="mb-1">
-                <LayerButton item={frame} selected={selectedIds().includes(frame.id)} onSelect={() => setSelectedIds([frame.id])} />
+                <LayerButton
+                  item={frame}
+                  selected={selectedIds().includes(frame.id)}
+                  onSelect={(event) => setSelectedIds(nextDesignerSelection(selectedIds(), frame.id, event.shiftKey))}
+                />
                 <div class="ml-3">
                   <For each={frameChildren(document(), frame.id)}>
-                    {(item) => <LayerButton item={item} selected={selectedIds().includes(item.id)} onSelect={() => setSelectedIds([item.id])} />}
+                    {(item) => (
+                      <LayerButton
+                        item={item}
+                        selected={selectedIds().includes(item.id)}
+                        onSelect={(event) => setSelectedIds(nextDesignerSelection(selectedIds(), item.id, event.shiftKey))}
+                      />
+                    )}
                   </For>
                 </div>
               </div>
@@ -413,6 +518,7 @@ export function DesignerPanel(props: {
             aria-label="Design name"
           />
           <div class="rounded-md border border-border-weaker-base bg-background-base p-1 flex items-center gap-1">
+            <ToolbarButton label="Select" onClick={() => setSelectedIds([])} />
             <ToolbarButton label="Frame" onClick={addFrame} />
             <ToolbarButton label="Rect" onClick={() => addShape("rect")} />
             <ToolbarButton label="Ellipse" onClick={() => addShape("ellipse")} />
@@ -425,6 +531,7 @@ export function DesignerPanel(props: {
           </div>
           <div class="min-w-0 flex-1" />
           <div class="rounded-md border border-border-weaker-base bg-background-base p-1 flex items-center gap-1">
+            <ToolbarButton label={fullscreen() ? "Exit full screen" : "Full screen"} onClick={() => setFullscreen((value) => !value)} />
             <ToolbarButton label="JSON" onClick={exportJson} />
             <ToolbarButton label="HTML" onClick={exportHtml} />
             <Button class="h-8 rounded-md px-3 text-11-medium" onClick={() => void saveDesign()} disabled={saving()}>
@@ -436,7 +543,7 @@ export function DesignerPanel(props: {
         <div class="min-h-0 flex-1 overflow-auto bg-[#0b0b0c] p-4">
           <div class="mb-3 flex items-center justify-between gap-3 text-11-medium text-text-weak">
             <div class="truncate">{page()?.name ?? "Page"} / {frames().length} frames</div>
-            <div class="shrink-0">{selectedIds().length ? `${selectedIds().length} selected` : "No selection"}</div>
+            <div data-testid="designer-selection-status" class="shrink-0">{selectedIds().length ? `${selectedIds().length} selected` : "No selection"}</div>
           </div>
           <div class="min-h-full min-w-[720px] overflow-hidden rounded-lg border border-border-weaker-base bg-[#0f0f0f] shadow-xs-border">
             <DesignerCanvas
@@ -533,7 +640,8 @@ export function DesignerPanel(props: {
           </div>
         </div>
       </aside>
-    </div>
+      </div>
+    </Show>
   )
 }
 
@@ -551,6 +659,7 @@ function DesignerCanvas(props: {
   let resizeFrame = 0
   const nodeMap = new Map<string, Konva.Node>()
   const [viewport, setViewport] = createSignal({ width: 720, height: 560 })
+  const [canvasReady, setCanvasReady] = createSignal(false)
 
   const resizeStage = () => {
     if (!host || !stage) return
@@ -585,24 +694,29 @@ function DesignerCanvas(props: {
     observer.observe(host)
     resizeStage()
     resizeFrame = requestAnimationFrame(resizeStage)
+    setCanvasReady(true)
     onCleanup(() => {
       cancelAnimationFrame(resizeFrame)
       observer?.disconnect()
       stage?.destroy()
+      setCanvasReady(false)
     })
   })
 
   createEffect(() => {
-    if (!stage || !layer || !transformer) return
+    const ready = canvasReady()
     const size = viewport()
+    if (!ready || !stage || !layer || !transformer) return
     nodeMap.clear()
-    layer.destroyChildren()
+    layer.getChildren().forEach((node) => {
+      if (node !== transformer) node.destroy()
+    })
     drawGrid(layer, size.width, size.height)
     designFrames(props.document).forEach((frame) => drawElement(layer!, frame, props))
     designElements(props.document)
       .filter((item) => item.type !== "frame")
       .forEach((item) => drawElement(layer!, item, props))
-    layer.add(transformer)
+    transformer.moveToTop()
     transformer.nodes(props.selectedIds.flatMap((id) => {
       const node = nodeMap.get(id)
       return node ? [node] : []
@@ -652,7 +766,7 @@ function DesignerCanvas(props: {
     node.name(item.id)
     node.on("click tap", (event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
       event.cancelBubble = true
-      input.onSelect("shiftKey" in event.evt && event.evt.shiftKey ? [...input.selectedIds, item.id] : [item.id])
+      input.onSelect(nextDesignerSelection(input.selectedIds, item.id, "shiftKey" in event.evt && event.evt.shiftKey))
     })
     node.on("dragend", () => {
       if (item.type === "ellipse") {
@@ -688,7 +802,13 @@ function DesignerCanvas(props: {
     }
   }
 
-  return <div ref={host} class="h-full min-h-[560px] w-full" />
+  return <div ref={host} data-testid="designer-canvas-host" class="h-full min-h-[560px] w-full" />
+}
+
+function nextDesignerSelection(current: string[], id: string, extend: boolean) {
+  if (!extend) return [id]
+  if (current.includes(id)) return current.filter((item) => item !== id)
+  return [...current, id]
 }
 
 function drawGrid(layer: Konva.Layer, width: number, height: number) {
@@ -714,7 +834,7 @@ function ToolbarButton(props: { label: string; onClick: VoidFunction; disabled?:
   )
 }
 
-function LayerButton(props: { item: PaddieDesignElement; selected: boolean; onSelect: VoidFunction }) {
+function LayerButton(props: { item: PaddieDesignElement; selected: boolean; onSelect: (event: MouseEvent) => void }) {
   return (
     <button
       type="button"
@@ -769,6 +889,12 @@ function InspectorNumber(props: { label: string; value: number; onInput: (value:
       />
     </label>
   )
+}
+
+function formatDesignerDate(value: string) {
+  const time = Date.parse(value)
+  if (!Number.isFinite(time)) return "Unknown"
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(time))
 }
 
 function localPayloads(): DesignerPayload[] {
