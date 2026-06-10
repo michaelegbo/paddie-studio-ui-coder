@@ -1158,25 +1158,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             continue
           }
 
-          if (item.type === "paddie-design") {
-            prompt.context.add({
-              type: "paddie-design",
-              designId: item.designId,
-              designName: item.designName,
-              pageId: item.pageId,
-              frameIds: item.frameIds,
-              frameNames: item.frameNames,
-              mode: item.mode,
-              document: item.document,
-              selectedElements: item.selectedElements,
-              tokens: item.tokens,
-              assets: item.assets,
-              thumbnailDataUrl: item.thumbnailDataUrl,
-              writebackAllowed: item.writebackAllowed,
-            })
-            continue
-          }
-
           prompt.context.add({
             type: item.type,
             path: item.path,

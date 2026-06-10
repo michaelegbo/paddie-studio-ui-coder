@@ -13,12 +13,10 @@ import type {
   InspirationContextItem,
   KnowledgeBaseContextItem,
   MemoryContextItem,
-  PaddieDesignContextItem,
   Prompt,
   TemplateContextItem,
   WorkflowContextItem,
 } from "@/context/prompt"
-import { formatPaddieDesignNote } from "@/designer/helpers"
 import { paddieDataLlmRuntimeInstruction, paddieDataSkillInstruction } from "@/paddie-data/helpers"
 import { formatTemplateVisualContract } from "@/template/helpers"
 import { Identifier } from "@/utils/id"
@@ -40,7 +38,6 @@ type BuildRequestPartsInput = {
     | DataPlaygroundContextItem
     | InspirationContextItem
     | AutopilotContextItem
-    | PaddieDesignContextItem
   ))[]
   images: ImageAttachmentPart[]
   text: string
@@ -94,9 +91,6 @@ const isInspirationContext = (
 const isAutopilotContext = (
   item: BuildRequestPartsInput["context"][number],
 ): item is { key: string } & AutopilotContextItem => item.type === "autopilot"
-const isPaddieDesignContext = (
-  item: BuildRequestPartsInput["context"][number],
-): item is { key: string } & PaddieDesignContextItem => item.type === "paddie-design"
 
 const TEMPLATE_REFERENCE_FILE_LIMIT = 48_000
 const TEMPLATE_REFERENCE_TOTAL_LIMIT = 140_000
@@ -439,8 +433,6 @@ const formatAutopilotNote = (item: AutopilotContextItem) => {
   return lines.join("\n\n")
 }
 
-const formatPaddieDesignContextNote = (item: PaddieDesignContextItem) => formatPaddieDesignNote(item)
-
 const toOptimisticPart = (part: PromptRequestPart, sessionID: string, messageID: string): Part => {
   if (part.type === "text") {
     return {
@@ -609,16 +601,6 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
       ]
     }
 
-    if (isPaddieDesignContext(item)) {
-      return [
-        {
-          id: Identifier.ascending("part"),
-          type: "text",
-          text: formatPaddieDesignContextNote(item),
-          synthetic: true,
-        } satisfies PromptRequestPart,
-      ]
-    }
 
     const path = absolute(input.sessionDirectory, item.path)
     const url = `file://${encodeFilePath(path)}${fileQuery(item.selection)}`

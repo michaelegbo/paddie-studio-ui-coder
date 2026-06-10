@@ -65,7 +65,6 @@
     "effect": "catalog:",
     "fuzzysort": "catalog:",
     "ghostty-web": "github:anomalyco/ghostty-web#main",
-    "konva": "10.3.0",
     "luxon": "catalog:",
     "marked": "catalog:",
     "marked-shiki": "catalog:",

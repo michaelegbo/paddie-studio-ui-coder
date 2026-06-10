@@ -20,7 +20,6 @@ import {
   type PaddieStudioEventStatus,
 } from "@/lib/paddie-telemetry"
 import { AutopilotPanel } from "@/components/autopilot-panel"
-import { DesignerPanel } from "@/components/designer-panel"
 import { InspirationPanel } from "@/components/inspiration-panel"
 import { PaddieAccountPanel } from "@/components/paddie-account-panel"
 import { PaddieDataPanel } from "@/components/paddie-data-panel"
@@ -105,7 +104,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 type Device = "desktop" | "tablet" | "mobile"
 type Desk = "1920" | "1600" | "1440"
-type StudioSection = "templates" | "inspiration" | "autopilot" | "designer" | "data" | "workflow" | "account"
+type StudioSection = "templates" | "inspiration" | "autopilot" | "data" | "workflow" | "account"
 
 const views = {
   "1920": { w: 1920, h: 1080, label: "1920x1080" },
@@ -931,11 +930,11 @@ export function TemplatePanel(props: {
                         <div class="text-15-medium text-text-base">
                           {autopilotAvailable()
                             ? inspirationAvailable()
-                              ? "Templates, inspiration, autopilot, designer, data & workflows"
-                              : "Templates, autopilot, designer, data & workflows"
+                              ? "Templates, inspiration, autopilot, data & workflows"
+                              : "Templates, autopilot, data & workflows"
                             : inspirationAvailable()
-                              ? "Templates, inspiration, designer, data & workflows"
-                              : "Templates, designer, data & workflows"}
+                              ? "Templates, inspiration, data & workflows"
+                              : "Templates, data & workflows"}
                         </div>
                       </div>
                     </div>
@@ -944,7 +943,6 @@ export function TemplatePanel(props: {
                         {tab("templates", "Templates")}
                         <Show when={inspirationAvailable()}>{tab("inspiration", "Inspiration")}</Show>
                         <Show when={autopilotAvailable()}>{tab("autopilot", "Autopilot")}</Show>
-                        {tab("designer", "Designer")}
                         {tab("data", "Data")}
                         {tab("workflow", "Workflow Builder")}
                         {tab("account", "Dashboard")}
@@ -994,8 +992,6 @@ export function TemplatePanel(props: {
                         ? "Manage your Studio plan, billing handoff, and account usage from Paddie."
                       : section() === "autopilot"
                         ? "Plan, build, test, preview, and iterate through a scoped native opencode worker session."
-                      : section() === "designer"
-                        ? "Design frames directly in Studio, attach selected frames to chat, and turn them into websites or templates."
                       : section() === "inspiration"
                         ? "Browse a public website, capture a selectable snapshot, and attach page or element references to chat."
                         : "Browse a starter first, then open it in a desktop canvas. Curated parts stay hidden until you select one or open them yourself."}
@@ -1008,10 +1004,6 @@ export function TemplatePanel(props: {
 
                 <Show when={section() === "autopilot" && autopilotAvailable()}>
                   <AutopilotPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
-                </Show>
-
-                <Show when={section() === "designer"}>
-                  <DesignerPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
                 </Show>
 
                 <Show when={section() === "workflow"}>

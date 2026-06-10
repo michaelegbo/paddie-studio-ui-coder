@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
 import type { Prompt } from "@/context/prompt"
-import { createDefaultDesignDocument, createPaddieDesignContext, designFrames } from "@/designer/helpers"
 import { buildRequestParts } from "./build-request-parts"
 
 describe("buildRequestParts", () => {
@@ -400,36 +399,6 @@ describe("buildRequestParts", () => {
       expect(synthetic.text).toContain("font-size: 48px")
       expect(synthetic.text).toContain("@keyframes fade-in")
       expect(synthetic.text).toContain("Do not copy private assets")
-    }
-  })
-
-  test("adds Paddie Designer context as a native design reference", () => {
-    const document = createDefaultDesignDocument("Landing")
-    const frame = designFrames(document)[0]!
-    const result = buildRequestParts({
-      prompt: [{ type: "text", content: "build from this design frame", start: 0, end: 28 }],
-      context: [
-        {
-          key: `paddie-design:${document.id}:${document.currentPageId}:website:${frame.id}:read`,
-          type: "paddie-design",
-          ...createPaddieDesignContext({ document, selectedIds: [frame.id], mode: "website" }),
-        },
-      ],
-      images: [],
-      text: "build from this design frame",
-      messageID: "msg_design",
-      sessionID: "ses_design",
-      sessionDirectory: "/repo",
-    })
-
-    const synthetic = result.requestParts.find((part) => part.type === "text" && part.synthetic)
-    expect(synthetic?.type).toBe("text")
-    if (synthetic?.type === "text") {
-      expect(synthetic.text).toContain("native Paddie Designer reference")
-      expect(synthetic.text).toContain(`Design: Landing (${document.id})`)
-      expect(synthetic.text).toContain(`${frame.name} (${frame.id})`)
-      expect(synthetic.text).toContain("Writeback allowed: no")
-      expect(synthetic.text).toContain("Design JSON")
     }
   })
 

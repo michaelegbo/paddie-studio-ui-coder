@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import { createDefaultDesignDocument, createPaddieDesignContext, designFrames } from "@/designer/helpers"
 import { contextItemChip } from "./context-item-chip"
 
 const styleSignals = {
@@ -73,22 +72,6 @@ describe("contextItemChip", () => {
       label: "Autopilot",
       body: "Build and verify a dashboard",
       icon: "brain",
-    })
-  })
-
-  test("labels Paddie Designer references by selected frames", () => {
-    const document = createDefaultDesignDocument("Landing design")
-    const frame = designFrames(document)[0]!
-    expect(
-      contextItemChip({
-        key: `paddie-design:${document.id}:${document.currentPageId}:website:${frame.id}:read`,
-        type: "paddie-design",
-        ...createPaddieDesignContext({ document, selectedIds: [frame.id], mode: "website" }),
-      }),
-    ).toMatchObject({
-      label: frame.name,
-      body: `website - ${frame.name}`,
-      icon: "window-cursor",
     })
   })
 
