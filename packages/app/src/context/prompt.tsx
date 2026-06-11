@@ -5,7 +5,6 @@ import { batch, createMemo, createRoot, getOwner, onCleanup } from "solid-js"
 import { createStore, type SetStoreFunction } from "solid-js/store"
 import type { AutopilotContextPayload } from "@/autopilot/helpers"
 import type { FileSelection } from "@/context/file"
-import type { PaddieDesignContextPayload } from "@/designer/helpers"
 import type { InspirationContextPayload } from "@/inspiration/helpers"
 import type { PaddieDataLlmRuntimeConfig } from "@/paddie-data/helpers"
 import type { TemplateFile, TemplateVisualContract } from "@/template/helpers"
@@ -183,10 +182,6 @@ export type AutopilotContextItem = AutopilotContextPayload & {
   type: "autopilot"
 }
 
-export type PaddieDesignContextItem = PaddieDesignContextPayload & {
-  type: "paddie-design"
-}
-
 export type ContextItem =
   | FileContextItem
   | ElementContextItem
@@ -197,7 +192,6 @@ export type ContextItem =
   | DataPlaygroundContextItem
   | InspirationContextItem
   | AutopilotContextItem
-  | PaddieDesignContextItem
 
 export const DEFAULT_PROMPT: Prompt = [{ type: "text", content: "", start: 0, end: 0 }]
 
@@ -253,9 +247,6 @@ function contextItemKey(item: ContextItem) {
   if (item.type === "element") return `${item.type}:${item.url}:${item.selector}`
   if (item.type === "inspiration") return `${item.type}:${item.url}:${item.mode}:${item.selector ?? "page"}`
   if (item.type === "autopilot") return `${item.type}:${item.runID}`
-  if (item.type === "paddie-design") {
-    return `${item.type}:${item.designId}:${item.pageId}:${item.mode}:${item.frameIds.join(",") || item.frameNames.join(",") || "active"}:${item.writebackAllowed ? "write" : "read"}`
-  }
   if (item.type === "memory") return `${item.type}:${item.userID}:${item.mode}:${item.query ?? item.label}`
   if (item.type === "knowledge-base") return `${item.type}:${item.knowledgeBaseID}:${item.mode}:${item.query ?? item.label}`
   if (item.type === "data-playground") {

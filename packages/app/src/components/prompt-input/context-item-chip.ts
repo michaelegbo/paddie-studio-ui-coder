@@ -1,6 +1,5 @@
 import { getFilenameTruncated } from "@opencode-ai/core/util/path"
 import type { ContextItem } from "@/context/prompt"
-import { paddieDesignContextBody, paddieDesignContextLabel } from "@/designer/helpers"
 
 export function contextItemChip(item: ContextItem & { key: string }) {
   if (item.type === "file") {
@@ -71,14 +70,6 @@ export function contextItemChip(item: ContextItem & { key: string }) {
       label: "Autopilot",
       body: item.goal,
       icon: "brain" as const,
-    }
-  }
-
-  if (item.type === "paddie-design") {
-    return {
-      label: paddieDesignContextLabel(item),
-      body: paddieDesignContextBody(item),
-      icon: "window-cursor" as const,
     }
   }
 

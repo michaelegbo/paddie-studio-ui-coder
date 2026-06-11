@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
 import type { ContextItem, Prompt } from "@/context/prompt"
-import { createDefaultDesignDocument, createPaddieDesignContext, designFrames } from "@/designer/helpers"
 
 let createPromptSubmit: typeof import("./submit").createPromptSubmit
 
@@ -688,45 +687,4 @@ describe("prompt submit worktree selection", () => {
     })
   })
 
-  test("restores Designer transient context when prompt send fails", async () => {
-    params = { id: "session-design" }
-    promptAsyncError = new Error("network down")
-    const document = createDefaultDesignDocument("Landing")
-    const frame = designFrames(document)[0]!
-    contextItems.push({
-      key: `paddie-design:${document.id}:${document.currentPageId}:website:${frame.id}:read`,
-      type: "paddie-design",
-      ...createPaddieDesignContext({ document, selectedIds: [frame.id], mode: "website" }),
-    })
-
-    const submit = createPromptSubmit({
-      info: () => ({ id: "session-design" }),
-      imageAttachments: () => [],
-      commentCount: () => 0,
-      autoAccept: () => false,
-      mode: () => "normal",
-      working: () => false,
-      editor: () => undefined,
-      queueScroll: () => undefined,
-      promptLength: (value) => value.reduce((sum, part) => sum + ("content" in part ? part.content.length : 0), 0),
-      addToHistory: () => undefined,
-      resetHistoryNavigation: () => undefined,
-      setMode: () => undefined,
-      setPopover: () => undefined,
-      onSubmit: () => undefined,
-    })
-
-    await submit.handleSubmit({ preventDefault: () => undefined } as unknown as Event)
-    for (let i = 0; i < 20 && contextAdds.length === 0; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 0))
-    }
-
-    expect(contextRemoves).toContain(`paddie-design:${document.id}:${document.currentPageId}:website:${frame.id}:read`)
-    expect(contextAdds).toHaveLength(1)
-    expect(contextAdds[0]).toMatchObject({
-      type: "paddie-design",
-      designId: document.id,
-      frameNames: [frame.name],
-    })
-  })
 })

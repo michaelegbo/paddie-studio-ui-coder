@@ -40,7 +40,6 @@ import {
   transitionAutopilotRun,
   updateAutopilotTaskQueue,
 } from "./helpers"
-import { createDefaultDesignDocument, createPaddieDesignContext, designFrames } from "@/designer/helpers"
 
 describe("autopilot helpers", () => {
   test("normalizes goals and rejects empty input", () => {
@@ -189,30 +188,6 @@ describe("autopilot helpers", () => {
     expect(prompt).toContain("Selected Paddie template: CRM")
     expect(prompt).toContain("Selected Paddie workflow: Lead intake")
     expect(prompt).toContain("Generated javascript client code")
-  })
-
-  test("adds attached Designer context to native prompts", () => {
-    const run = autopilotContextFromRun(
-      createAutopilotRun({
-        runID: "run-designer",
-        now: "2026-05-22T10:00:00.000Z",
-        goal: "Convert these Designer frames into a responsive website",
-        workspace: "/repo",
-      }),
-    )
-    const document = createDefaultDesignDocument("Landing")
-    const frame = designFrames(document)[0]!
-    const context = createPaddieDesignContext({ document, selectedIds: [frame.id], mode: "website" })
-    const resources = {
-      designerAccess: "attached" as const,
-      designs: [context],
-      selectedDesign: context,
-    }
-
-    expect(nativePlannerPrompt(run, resources)).toContain("Paddie Designer")
-    expect(nativeWorkerPrompt(run, resources)).toContain("Paddie Designer")
-    expect(nativeWorkerPrompt(run, resources)).toContain(`Design: Landing (${document.id})`)
-    expect(nativeWorkerPrompt(run, resources)).toContain("Design JSON")
   })
 
   test("adds template visual contracts to native prompts", () => {
@@ -488,7 +463,6 @@ PADDIE_TEMPLATE_VISUAL_REPORT_END
 
   test("classifies approval-gated actions", () => {
     expect(classifyAutopilotApproval("git push origin dev")).toBe("approval-required")
-    expect(classifyAutopilotApproval("design writeback to update the Hero frame")).toBe("approval-required")
     expect(classifyAutopilotApproval("bun test")).toBe("safe")
   })
 
