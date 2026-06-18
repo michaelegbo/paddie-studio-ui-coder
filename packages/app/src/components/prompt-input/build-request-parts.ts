@@ -6,6 +6,7 @@ import type {
   AgentPart,
   AutopilotContextItem,
   DataPlaygroundContextItem,
+  DesignPackContextItem,
   ElementContextItem,
   FileAttachmentPart,
   FileContextItem,
@@ -17,6 +18,7 @@ import type {
   TemplateContextItem,
   WorkflowContextItem,
 } from "@/context/prompt"
+import { formatDesignPackContext } from "@/design-pack/helpers"
 import { paddieDataLlmRuntimeInstruction, paddieDataSkillInstruction } from "@/paddie-data/helpers"
 import { formatTemplateVisualContract } from "@/template/helpers"
 import { Identifier } from "@/utils/id"
@@ -38,6 +40,7 @@ type BuildRequestPartsInput = {
     | DataPlaygroundContextItem
     | InspirationContextItem
     | AutopilotContextItem
+    | DesignPackContextItem
   ))[]
   images: ImageAttachmentPart[]
   text: string
@@ -91,6 +94,9 @@ const isInspirationContext = (
 const isAutopilotContext = (
   item: BuildRequestPartsInput["context"][number],
 ): item is { key: string } & AutopilotContextItem => item.type === "autopilot"
+const isDesignPackContext = (
+  item: BuildRequestPartsInput["context"][number],
+): item is { key: string } & DesignPackContextItem => item.type === "design-pack"
 
 const TEMPLATE_REFERENCE_FILE_LIMIT = 48_000
 const TEMPLATE_REFERENCE_TOTAL_LIMIT = 140_000
@@ -601,6 +607,16 @@ export function buildRequestParts(input: BuildRequestPartsInput) {
       ]
     }
 
+    if (isDesignPackContext(item)) {
+      return [
+        {
+          id: Identifier.ascending("part"),
+          type: "text",
+          text: formatDesignPackContext(item),
+          synthetic: true,
+        } satisfies PromptRequestPart,
+      ]
+    }
 
     const path = absolute(input.sessionDirectory, item.path)
     const url = `file://${encodeFilePath(path)}${fileQuery(item.selection)}`

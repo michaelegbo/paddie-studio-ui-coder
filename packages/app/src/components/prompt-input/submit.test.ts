@@ -1,5 +1,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
 import type { ContextItem, Prompt } from "@/context/prompt"
+import {
+  BASE_DESIGN_PACK,
+  createDesignPackContextItem,
+  createDesignPackVariants,
+  designPackContextKey,
+} from "@/design-pack/helpers"
 
 let createPromptSubmit: typeof import("./submit").createPromptSubmit
 
@@ -684,6 +690,48 @@ describe("prompt submit worktree selection", () => {
       type: "autopilot",
       runID: "run-1",
       goal: "Build and verify a dashboard",
+    })
+  })
+
+  test("restores design pack transient context when prompt send fails", async () => {
+    params = { id: "session-design-pack" }
+    promptAsyncError = new Error("network down")
+    const variant = createDesignPackVariants(BASE_DESIGN_PACK, "Build a dashboard")[0]
+    const item = createDesignPackContextItem(BASE_DESIGN_PACK, variant, "Build a dashboard")
+    contextItems.push({
+      key: designPackContextKey(item),
+      type: "design-pack",
+      ...item,
+    })
+
+    const submit = createPromptSubmit({
+      info: () => ({ id: "session-design-pack" }),
+      imageAttachments: () => [],
+      commentCount: () => 0,
+      autoAccept: () => false,
+      mode: () => "normal",
+      working: () => false,
+      editor: () => undefined,
+      queueScroll: () => undefined,
+      promptLength: (value) => value.reduce((sum, part) => sum + ("content" in part ? part.content.length : 0), 0),
+      addToHistory: () => undefined,
+      resetHistoryNavigation: () => undefined,
+      setMode: () => undefined,
+      setPopover: () => undefined,
+      onSubmit: () => undefined,
+    })
+
+    await submit.handleSubmit({ preventDefault: () => undefined } as unknown as Event)
+    for (let i = 0; i < 20 && contextAdds.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+
+    expect(contextRemoves).toContain("design-pack:base:base:calm-product")
+    expect(contextAdds).toHaveLength(1)
+    expect(contextAdds[0]).toMatchObject({
+      type: "design-pack",
+      pack: { id: "base", name: "Base" },
+      variant: { name: "Calm Product" },
     })
   })
 

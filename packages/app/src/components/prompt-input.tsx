@@ -50,6 +50,7 @@ import {
 import { createPromptSubmit, type FollowupDraft } from "./prompt-input/submit"
 import { PromptPopover, type AtOption, type SlashCommand } from "./prompt-input/slash-popover"
 import { PromptContextItems } from "./prompt-input/context-items"
+import { PromptDesignPackControl } from "./prompt-input/design-pack-control"
 import { PromptImageAttachments } from "./prompt-input/image-attachments"
 import { PromptDragOverlay } from "./prompt-input/drag-overlay"
 import { promptPlaceholder } from "./prompt-input/placeholder"
@@ -1158,6 +1159,24 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             continue
           }
 
+          if (item.type === "design-pack") {
+            prompt.context.add({
+              type: "design-pack",
+              pack: item.pack,
+              variant: item.variant,
+              matchedSkills: item.matchedSkills,
+              rules: item.rules,
+              tokens: item.tokens,
+              typography: item.typography,
+              icons: item.icons,
+              motion: item.motion,
+              componentGuidance: item.componentGuidance,
+              inspirationRefs: item.inspirationRefs,
+              styleNotes: item.styleNotes,
+            })
+            continue
+          }
+
           prompt.context.add({
             type: item.type,
             path: item.path,
@@ -1788,6 +1807,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         </TooltipKeybind>
                       </div>
                     </Show>
+                    <div
+                      data-component="prompt-design-pack-control"
+                      style={providersShouldFadeIn() ? { animation: "fade-in 0.3s" } : undefined}
+                    >
+                      <PromptDesignPackControl style={control()} restoreFocus={restoreFocus} />
+                    </div>
                   </Show>
                 </Show>
               </div>
