@@ -203,7 +203,18 @@ type CommentItem = {
 
 type TransientItem = Extract<
   ContextItem,
-  { type: "element" | "template" | "workflow" | "memory" | "knowledge-base" | "data-playground" | "inspiration" | "autopilot" }
+  {
+    type:
+      | "element"
+      | "template"
+      | "workflow"
+      | "memory"
+      | "knowledge-base"
+      | "data-playground"
+      | "inspiration"
+      | "autopilot"
+      | "design-pack"
+  }
 > & {
   key: string
 }
@@ -216,7 +227,8 @@ const isTransientItem = (item: ContextItem | (ContextItem & { key: string })): i
   item.type === "knowledge-base" ||
   item.type === "data-playground" ||
   item.type === "inspiration" ||
-  item.type === "autopilot"
+  item.type === "autopilot" ||
+  item.type === "design-pack"
 
 export function createPromptSubmit(input: PromptSubmitInput) {
   const navigate = useNavigate()
@@ -405,6 +417,24 @@ export function createPromptSubmit(input: PromptSubmitInput) {
           plan: item.plan,
           events: item.events,
           safeguards: item.safeguards,
+        })
+        continue
+      }
+
+      if (item.type === "design-pack") {
+        prompt.context.add({
+          type: "design-pack",
+          pack: item.pack,
+          variant: item.variant,
+          matchedSkills: item.matchedSkills,
+          rules: item.rules,
+          tokens: item.tokens,
+          typography: item.typography,
+          icons: item.icons,
+          motion: item.motion,
+          componentGuidance: item.componentGuidance,
+          inspirationRefs: item.inspirationRefs,
+          styleNotes: item.styleNotes,
         })
         continue
       }

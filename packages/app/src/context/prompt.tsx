@@ -4,6 +4,7 @@ import { useParams } from "@solidjs/router"
 import { batch, createMemo, createRoot, getOwner, onCleanup } from "solid-js"
 import { createStore, type SetStoreFunction } from "solid-js/store"
 import type { AutopilotContextPayload } from "@/autopilot/helpers"
+import { designPackContextKey, type DesignPackContextPayload } from "@/design-pack/helpers"
 import type { FileSelection } from "@/context/file"
 import type { InspirationContextPayload } from "@/inspiration/helpers"
 import type { PaddieDataLlmRuntimeConfig } from "@/paddie-data/helpers"
@@ -182,6 +183,10 @@ export type AutopilotContextItem = AutopilotContextPayload & {
   type: "autopilot"
 }
 
+export type DesignPackContextItem = DesignPackContextPayload & {
+  type: "design-pack"
+}
+
 export type ContextItem =
   | FileContextItem
   | ElementContextItem
@@ -192,6 +197,7 @@ export type ContextItem =
   | DataPlaygroundContextItem
   | InspirationContextItem
   | AutopilotContextItem
+  | DesignPackContextItem
 
 export const DEFAULT_PROMPT: Prompt = [{ type: "text", content: "", start: 0, end: 0 }]
 
@@ -247,6 +253,7 @@ function contextItemKey(item: ContextItem) {
   if (item.type === "element") return `${item.type}:${item.url}:${item.selector}`
   if (item.type === "inspiration") return `${item.type}:${item.url}:${item.mode}:${item.selector ?? "page"}`
   if (item.type === "autopilot") return `${item.type}:${item.runID}`
+  if (item.type === "design-pack") return designPackContextKey(item)
   if (item.type === "memory") return `${item.type}:${item.userID}:${item.mode}:${item.query ?? item.label}`
   if (item.type === "knowledge-base") return `${item.type}:${item.knowledgeBaseID}:${item.mode}:${item.query ?? item.label}`
   if (item.type === "data-playground") {

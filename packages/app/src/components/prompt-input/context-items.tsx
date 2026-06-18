@@ -93,6 +93,15 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                   <span class="break-all text-text-invert-base/80">{item.workspace}</span>
                   <span class="text-text-invert-base/70">{item.status}</span>
                 </div>
+              ) : item.type === "design-pack" ? (
+                <div class="flex max-w-[320px] flex-col gap-1">
+                  <span class="truncate text-text-invert-base">{item.variant?.name ?? item.pack.name}</span>
+                  <span class="text-text-invert-base/80">{item.pack.name}</span>
+                  <Show when={item.variant}>{(value) => <span class="text-text-invert-base/70">{value().summary}</span>}</Show>
+                  <Show when={item.matchedSkills.length}>
+                    <span class="text-text-invert-base/70">{item.matchedSkills.length} matched design skill{item.matchedSkills.length === 1 ? "" : "s"}</span>
+                  </Show>
+                </div>
               ) : (
                 <div class="flex max-w-[320px] flex-col gap-1">
                   <span class="truncate text-text-invert-base">{item.templateName}</span>
@@ -131,6 +140,8 @@ export const PromptContextItems: Component<ContextItemsProps> = (props) => {
                       <Icon name="window-cursor" class="shrink-0 size-3.5 text-icon-info-base" />
                     ) : item.type === "autopilot" ? (
                       <Icon name="brain" class="shrink-0 size-3.5 text-icon-info-base" />
+                    ) : item.type === "design-pack" ? (
+                      <Icon name="layout-right-full" class="shrink-0 size-3.5 text-icon-info-base" />
                     ) : (
                       <Icon name="layout-right-full" class="shrink-0 size-3.5 text-icon-info-base" />
                     )}

@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import type { Prompt } from "@/context/prompt"
+import {
+  BASE_DESIGN_PACK,
+  createDesignPackContextItem,
+  createDesignPackVariants,
+  designPackContextKey,
+} from "@/design-pack/helpers"
 import { buildRequestParts } from "./build-request-parts"
 
 describe("buildRequestParts", () => {
@@ -207,6 +213,29 @@ describe("buildRequestParts", () => {
       expect(synthetic.text).toContain("Generated javascript client code")
       expect(synthetic.text).toContain("Workflow graph JSON")
       expect(synthetic.text).toContain("Classify order urgency")
+    }
+  })
+
+  test("adds selected design pack context as synthetic prompt context", () => {
+    const variant = createDesignPackVariants(BASE_DESIGN_PACK, "Build a dashboard")[0]
+    const item = createDesignPackContextItem(BASE_DESIGN_PACK, variant, "Build a dashboard")
+    const result = buildRequestParts({
+      prompt: [{ type: "text", content: "Build a dashboard", start: 0, end: 17 }],
+      context: [{ key: designPackContextKey(item), type: "design-pack", ...item }],
+      images: [],
+      text: "Build a dashboard",
+      messageID: "msg_design",
+      sessionID: "ses_design",
+      sessionDirectory: "/repo",
+    })
+
+    const synthetic = result.requestParts.find((part) => part.type === "text" && part.synthetic)
+    expect(synthetic?.type).toBe("text")
+    if (synthetic?.type === "text") {
+      expect(synthetic.text).toContain("Paddie Design Pack")
+      expect(synthetic.text).toContain("Pack: Base")
+      expect(synthetic.text).toContain("Selected variant: Calm Product")
+      expect(synthetic.text).toContain("Design context scoping")
     }
   })
 

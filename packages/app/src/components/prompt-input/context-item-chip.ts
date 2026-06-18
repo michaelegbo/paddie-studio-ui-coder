@@ -73,6 +73,14 @@ export function contextItemChip(item: ContextItem & { key: string }) {
     }
   }
 
+  if (item.type === "design-pack") {
+    return {
+      label: item.variant?.name ?? item.pack.name,
+      body: item.variant ? `${item.pack.name} design variant` : item.pack.description,
+      icon: "layout-right-full" as const,
+    }
+  }
+
   return {
     label: item.label || item.partName || item.templateName,
     body: item.selector || item.description,

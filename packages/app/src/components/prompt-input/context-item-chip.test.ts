@@ -1,4 +1,10 @@
 import { describe, expect, test } from "bun:test"
+import {
+  BASE_DESIGN_PACK,
+  createDesignPackContextItem,
+  createDesignPackVariants,
+  designPackContextKey,
+} from "@/design-pack/helpers"
 import { contextItemChip } from "./context-item-chip"
 
 const styleSignals = {
@@ -132,6 +138,23 @@ describe("contextItemChip", () => {
       label: "Paddie Data Playground",
       body: "router memory, 1 KB via openai",
       icon: "brain",
+    })
+  })
+
+  test("labels design pack variants by selected direction", () => {
+    const variant = createDesignPackVariants(BASE_DESIGN_PACK, "Build a dashboard")[1]
+    const item = createDesignPackContextItem(BASE_DESIGN_PACK, variant, "Build a dashboard")
+
+    expect(
+      contextItemChip({
+        key: designPackContextKey(item),
+        type: "design-pack",
+        ...item,
+      }),
+    ).toMatchObject({
+      label: "Dense Utility",
+      body: "Base design variant",
+      icon: "layout-right-full",
     })
   })
 })

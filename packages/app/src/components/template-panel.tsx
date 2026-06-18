@@ -19,7 +19,7 @@ import {
   type PaddieStudioEventName,
   type PaddieStudioEventStatus,
 } from "@/lib/paddie-telemetry"
-import { AutopilotPanel } from "@/components/autopilot-panel"
+import { DesignPackPanel } from "@/components/design-pack-panel"
 import { InspirationPanel } from "@/components/inspiration-panel"
 import { PaddieAccountPanel } from "@/components/paddie-account-panel"
 import { PaddieDataPanel } from "@/components/paddie-data-panel"
@@ -104,7 +104,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 type Device = "desktop" | "tablet" | "mobile"
 type Desk = "1920" | "1600" | "1440"
-type StudioSection = "templates" | "inspiration" | "autopilot" | "data" | "workflow" | "account"
+type StudioSection = "templates" | "inspiration" | "design-packs" | "data" | "workflow" | "account"
 
 const views = {
   "1920": { w: 1920, h: 1080, label: "1920x1080" },
@@ -152,7 +152,6 @@ export function TemplatePanel(props: {
   const [view, setView] = createSignal<"library" | "detail">("library")
   const [section, setSection] = createSignal<StudioSection>("templates")
   const inspirationAvailable = createMemo(() => settings.general.betaFeatures() && settings.general.inspiration())
-  const autopilotAvailable = createMemo(() => settings.general.autopilot())
   const [parts, setParts] = createSignal(false)
   const [device, setDevice] = createSignal<Device>("desktop")
   const [desk, setDesk] = createSignal<Desk>("1920")
@@ -292,12 +291,6 @@ export function TemplatePanel(props: {
   createEffect(() => {
     if (section() !== "inspiration") return
     if (inspirationAvailable()) return
-    setSection("templates")
-  })
-
-  createEffect(() => {
-    if (section() !== "autopilot") return
-    if (autopilotAvailable()) return
     setSection("templates")
   })
 
@@ -869,7 +862,7 @@ export function TemplatePanel(props: {
                 </div>
                 <div class="mt-2 text-13-medium leading-6 text-text-weak">
                   {subscription().message ??
-                    "Choose a paid plan and add a card to continue using Studio templates, workflows, data, and Autopilot. Cancel before the trial ends and you will not be charged."}
+                    "Choose a paid plan and add a card to continue using Studio templates, workflows, and data. Cancel before the trial ends and you will not be charged."}
                 </div>
                 <div class="mt-5 rounded-2xl border border-border-weaker-base bg-background-base px-4 py-3">
                   <div class="flex items-center justify-between gap-3">
@@ -928,13 +921,9 @@ export function TemplatePanel(props: {
                       <div class="min-w-0">
                         <div class="text-10-medium uppercase tracking-[0.12em] text-text-weak">Studio</div>
                         <div class="text-15-medium text-text-base">
-                          {autopilotAvailable()
-                            ? inspirationAvailable()
-                              ? "Templates, inspiration, autopilot, data & workflows"
-                              : "Templates, autopilot, data & workflows"
-                            : inspirationAvailable()
-                              ? "Templates, inspiration, data & workflows"
-                              : "Templates, data & workflows"}
+                          {inspirationAvailable()
+                            ? "Templates, inspiration, design packs, data & workflows"
+                            : "Templates, design packs, data & workflows"}
                         </div>
                       </div>
                     </div>
@@ -942,7 +931,7 @@ export function TemplatePanel(props: {
                       <div class="rounded-xl border border-border-weaker-base bg-background-base p-1 flex items-center gap-1">
                         {tab("templates", "Templates")}
                         <Show when={inspirationAvailable()}>{tab("inspiration", "Inspiration")}</Show>
-                        <Show when={autopilotAvailable()}>{tab("autopilot", "Autopilot")}</Show>
+                        {tab("design-packs", "Design Packs")}
                         {tab("data", "Data")}
                         {tab("workflow", "Workflow Builder")}
                         {tab("account", "Dashboard")}
@@ -990,8 +979,8 @@ export function TemplatePanel(props: {
                         ? "View Paddie Memory, AI RAG knowledge bases, and integration keys from your account."
                       : section() === "account"
                         ? "Manage your Studio plan, billing handoff, and account usage from Paddie."
-                      : section() === "autopilot"
-                        ? "Plan, build, test, preview, and iterate through a scoped native opencode worker session."
+                      : section() === "design-packs"
+                        ? "Attach lightweight design-system presets, explore three directions, and keep design context visible in chat."
                       : section() === "inspiration"
                         ? "Browse a public website, capture a selectable snapshot, and attach page or element references to chat."
                         : "Browse a starter first, then open it in a desktop canvas. Curated parts stay hidden until you select one or open them yourself."}
@@ -1002,8 +991,8 @@ export function TemplatePanel(props: {
                   <InspirationPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
                 </Show>
 
-                <Show when={section() === "autopilot" && autopilotAvailable()}>
-                  <AutopilotPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
+                <Show when={section() === "design-packs"}>
+                  <DesignPackPanel chatHidden={props.chatHidden} onChatToggle={props.onChatToggle} />
                 </Show>
 
                 <Show when={section() === "workflow"}>
