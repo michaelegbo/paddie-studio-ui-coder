@@ -310,6 +310,9 @@ export function WorkbenchPanel(props: { chatHidden?: boolean; onChatToggle?: Voi
     pick: false,
     doc: "",
     waitPick: false,
+    livePickX: 0.5,
+    livePickY: 0.5,
+    livePickActive: false,
   })
 
   let body: HTMLDivElement | undefined
@@ -455,6 +458,7 @@ export function WorkbenchPanel(props: { chatHidden?: boolean; onChatToggle?: Voi
     setState("pick", false)
     setState("doc", "")
     setState("waitPick", false)
+    setState("livePickActive", false)
   }
   const addElementContext = (item: { url: string; selector: string; label: string; html: string; text?: string }) => {
     prompt.context
@@ -480,16 +484,36 @@ export function WorkbenchPanel(props: { chatHidden?: boolean; onChatToggle?: Voi
       description: `${item.label} · picker still active`,
     })
   }
-  const pickLiveArea = (event: MouseEvent) => {
-    const url = previewUrl()
-    if (!url) return
+  const livePickPoint = (event: MouseEvent) => {
     const target = event.currentTarget
     if (!(target instanceof HTMLElement)) return
     const box = target.getBoundingClientRect()
-    const x = clamp((event.clientX - box.left) / Math.max(1, box.width), 0, 1)
-    const y = clamp((event.clientY - box.top) / Math.max(1, box.height), 0, 1)
-    const xp = Math.round(x * 1000) / 10
-    const yp = Math.round(y * 1000) / 10
+    return {
+      x: clamp((event.clientX - box.left) / Math.max(1, box.width), 0, 1),
+      y: clamp((event.clientY - box.top) / Math.max(1, box.height), 0, 1),
+    }
+  }
+  const moveLivePick = (event: MouseEvent) => {
+    const point = livePickPoint(event)
+    if (!point) return
+    setState({
+      livePickX: point.x,
+      livePickY: point.y,
+      livePickActive: true,
+    })
+  }
+  const pickLiveArea = (event: MouseEvent) => {
+    const url = previewUrl()
+    if (!url) return
+    const point = livePickPoint(event)
+    if (!point) return
+    setState({
+      livePickX: point.x,
+      livePickY: point.y,
+      livePickActive: true,
+    })
+    const xp = Math.round(point.x * 1000) / 10
+    const yp = Math.round(point.y * 1000) / 10
     const selector = `visual:${xp}%,${yp}%:${frameW()}x${Math.max(0, frameH() - chrome)}`
     const label = `Preview area ${xp}%, ${yp}%`
     addElementContext({
@@ -516,6 +540,7 @@ export function WorkbenchPanel(props: { chatHidden?: boolean; onChatToggle?: Voi
     if (previewSource() !== "static") {
       setState("doc", "")
       setState("waitPick", false)
+      setState("livePickActive", false)
       setState("pick", true)
       return
     }
@@ -1543,9 +1568,29 @@ export function WorkbenchPanel(props: { chatHidden?: boolean; onChatToggle?: Voi
                                     class="absolute inset-0 z-10 cursor-crosshair border-0 bg-transparent p-0"
                                     aria-label="Select preview area"
                                     title="Click an area to add it to chat"
+                                    onMouseMove={moveLivePick}
+                                    onMouseEnter={moveLivePick}
+                                    onMouseLeave={() => setState("livePickActive", false)}
                                     onClick={pickLiveArea}
                                   >
                                     <span class="pointer-events-none absolute inset-0 border-2 border-dashed border-blue-400/70 bg-blue-400/5" />
+                                    <Show when={state.livePickActive}>
+                                      <span
+                                        class="pointer-events-none absolute h-28 w-40 -translate-x-1/2 -translate-y-1/2 rounded-lg border-2 border-blue-300 bg-blue-400/15 shadow-[0_0_0_9999px_rgba(37,99,235,0.10)]"
+                                        style={{
+                                          left: `${state.livePickX * 100}%`,
+                                          top: `${state.livePickY * 100}%`,
+                                        }}
+                                      />
+                                      <span
+                                        class="pointer-events-none absolute h-px w-full -translate-y-1/2 bg-blue-200/60"
+                                        style={{ top: `${state.livePickY * 100}%` }}
+                                      />
+                                      <span
+                                        class="pointer-events-none absolute h-full w-px -translate-x-1/2 bg-blue-200/60"
+                                        style={{ left: `${state.livePickX * 100}%` }}
+                                      />
+                                    </Show>
                                   </button>
                                 </Show>
                               </div>
