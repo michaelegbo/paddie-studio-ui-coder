@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import type { Message, Part } from "@opencode-ai/sdk/v2/client"
 import type { LocalPTY } from "@/context/terminal"
-import { previewFromSession, previewFromTerminals, previewUrl } from "./preview-url"
+import {
+  normalizeManualPreviewUrl,
+  previewFromSession,
+  previewFromTerminalID,
+  previewFromTerminals,
+  previewUrl,
+} from "./preview-url"
 
 const assistant = (id: string) =>
   ({
@@ -67,5 +73,25 @@ describe("preview-url", () => {
     ] satisfies LocalPTY[]
 
     expect(previewFromTerminals(all)).toBe("http://127.0.0.1:5173/")
+  })
+
+  test("can target the terminal started by the preview run", () => {
+    const all = [
+      { id: "1", title: "Old server", titleNumber: 1, buffer: "Local: http://127.0.0.1:5176/" },
+      { id: "2", title: "Preview server", titleNumber: 2, buffer: "Local: http://127.0.0.1:5174/" },
+    ] satisfies LocalPTY[]
+
+    expect(previewFromTerminalID(all, "2")).toBe("http://127.0.0.1:5174/")
+  })
+
+  test("normalizes manual preview urls", () => {
+    expect(normalizeManualPreviewUrl("localhost:5173")).toBe("http://localhost:5173/")
+    expect(normalizeManualPreviewUrl("0.0.0.0:4173/dashboard")).toBe("http://localhost:4173/dashboard")
+    expect(normalizeManualPreviewUrl("example.com/app")).toBe("https://example.com/app")
+  })
+
+  test("rejects unsafe manual preview urls", () => {
+    expect(normalizeManualPreviewUrl("javascript:alert(1)")).toBeUndefined()
+    expect(normalizeManualPreviewUrl("")).toBeUndefined()
   })
 })

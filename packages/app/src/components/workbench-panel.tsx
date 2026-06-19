@@ -24,7 +24,14 @@ import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
 import { createSizing } from "@/pages/session/helpers"
-import { previewFromSession, previewFromTerminals } from "@/utils/preview-url"
+import { useSessionLayout } from "@/pages/session/session-layout"
+import { Persist, persisted } from "@/utils/persist"
+import {
+  normalizeManualPreviewUrl,
+  previewFromSession,
+  previewFromTerminalID,
+  previewFromTerminals,
+} from "@/utils/preview-url"
 import { detectPreview, type PreviewTarget } from "@/utils/workbench-preview"
 
 type Node = {
@@ -47,8 +54,6 @@ type Surface = "studio" | "templates"
 type Device = "desktop" | "tablet" | "mobile"
 type Desk = "1920" | "1600" | "1440"
 type CommandPreviewTarget = Extract<PreviewTarget, { kind: "command" }>
-
-const PROMPT_SHELL_EVENT = "paddie:prompt-shell"
 
 const views = {
   "1920": { w: 1920, h: 1080, label: "1920x1080" },
@@ -77,18 +82,12 @@ const quoteShellPath = (path: string) => {
 }
 
 const commandText = (target: CommandPreviewTarget, root: string) =>
-  target.cwd && !samePath(target.cwd, root)
-    ? `cd ${quoteShellPath(target.cwd)} && ${target.label}`
-    : target.label
+  target.cwd && !samePath(target.cwd, root) ? `cd ${quoteShellPath(target.cwd)} && ${target.label}` : target.label
 
 const isCommandTarget = (target: PreviewTarget): target is CommandPreviewTarget => target.kind === "command"
 
 const esc = (value: string) =>
-  value
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
+  value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
 
 const pickDoc = (url: string, html: string) => {
   const css = `<style>
@@ -264,11 +263,7 @@ function Tree(props: {
   )
 }
 
-export function WorkbenchPanel(props: {
-  chatHidden?: boolean
-  onChatToggle?: VoidFunction
-  onClose?: VoidFunction
-}) {
+export function WorkbenchPanel(props: { chatHidden?: boolean; onChatToggle?: VoidFunction; onClose?: VoidFunction }) {
   const command = useCommand()
   const language = useLanguage()
   const platform = usePlatform()
@@ -277,9 +272,18 @@ export function WorkbenchPanel(props: {
   const sdk = useSDK()
   const sync = useSync()
   const terminal = useTerminal()
+  const sessionLayout = useSessionLayout()
   const size = createSizing()
   const api = () => platform.workbench
   const root = createMemo(() => sync.data.path.directory || sdk.directory)
+  const [preview, setPreview] = persisted(
+    { ...Persist.workspace(sdk.directory, "workbench-preview"), debounceWriteMs: 300 },
+    createStore({
+      manualCommand: "",
+      manualUrl: "",
+      runTerminalID: "",
+    }),
+  )
   const [state, setState] = createStore({
     files: true,
     left: 280,
@@ -302,6 +306,7 @@ export function WorkbenchPanel(props: {
     staticScan: false,
     runCommand: "",
     runLabel: "",
+    runPending: false,
     pick: false,
     doc: "",
     waitPick: false,
@@ -318,11 +323,43 @@ export function WorkbenchPanel(props: {
 
   const tab = createMemo(() => state.tabs.find((item) => item.path === state.active))
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
-  const detected = createMemo(() => previewFromSession(messages(), sync.data.part) ?? previewFromTerminals(terminal.all()) ?? "")
-  const previewUrl = createMemo(() => detected() || state.staticUrl)
-  const previewLabel = createMemo(() => detected() || state.staticLabel)
-  const previewSource = createMemo(() => (detected() ? "live" : state.staticUrl ? "static" : "none"))
-  const working = createMemo(() => sync.data.session_working(params.id ?? ""))
+  const runDetected = createMemo(() => previewFromTerminalID(terminal.all(), preview.runTerminalID) ?? "")
+  const detected = createMemo(
+    () => previewFromSession(messages(), sync.data.part) ?? previewFromTerminals(terminal.all()) ?? "",
+  )
+  const manualPreviewText = createMemo(() => preview.manualUrl.trim())
+  const manualPreviewUrl = createMemo(() => normalizeManualPreviewUrl(preview.manualUrl) ?? "")
+  const manualPreviewInvalid = createMemo(() => !!manualPreviewText() && !manualPreviewUrl())
+  const runPreviewLocked = createMemo(() => state.runPending || !!preview.runTerminalID)
+  const previewUrl = createMemo(() =>
+    manualPreviewText() ? manualPreviewUrl() : runPreviewLocked() ? runDetected() : detected() || state.staticUrl,
+  )
+  const previewLabel = createMemo(() =>
+    manualPreviewText() ? manualPreviewUrl() : runPreviewLocked() ? runDetected() : detected() || state.staticLabel,
+  )
+  const previewSource = createMemo(() =>
+    manualPreviewText()
+      ? manualPreviewUrl()
+        ? "manual"
+        : "none"
+      : runPreviewLocked()
+        ? runDetected()
+          ? "live"
+          : "pending"
+        : detected()
+          ? "live"
+          : state.staticUrl
+            ? "static"
+            : "none",
+  )
+  const effectiveRunCommand = createMemo(() => preview.manualCommand.trim() || state.runCommand.trim())
+  createEffect(() => {
+    if (!terminal.ready()) return
+    const id = preview.runTerminalID
+    if (!id) return
+    if (terminal.all().some((pty) => pty.id === id)) return
+    setPreview("runTerminalID", "")
+  })
   const tree = () => state.tree
   const showFiles = createMemo(() => state.mode !== "preview" && state.files)
   const box = createMemo(() => state.box || 1200)
@@ -476,28 +513,38 @@ export function WorkbenchPanel(props: {
   }
 
   const runCode = () => {
-    if (working()) {
-      if (params.id) void sdk.client.session.abort({ sessionID: params.id }).catch(() => {})
-      showToast({ title: "Stopping code run", description: "The current chat run was asked to stop." })
-      return
-    }
-
-    const command = state.runCommand.trim()
+    const command = effectiveRunCommand()
     if (!command) {
-      focus()
       showToast({
         variant: "error",
         title: "No run command found",
-        description: "Add a dev/start script or type a shell command in chat.",
+        description: "Enter a command below or add a dev/start script to this workspace.",
       })
       return
     }
 
-    if (props.chatHidden) props.onChatToggle?.()
-    requestAnimationFrame(() => {
-      window.dispatchEvent(new CustomEvent(PROMPT_SHELL_EVENT, { detail: { action: "run", command, submit: true } }))
-    })
-    showToast({ title: "Run command sent", description: command })
+    sessionLayout.view().terminal.open()
+    setState("runPending", true)
+    void terminal
+      .run({
+        command,
+        cwd: root(),
+        title: state.runLabel || "Preview server",
+      })
+      .then((id) => {
+        setState("runPending", false)
+        if (!id) {
+          showToast({
+            variant: "error",
+            title: "Could not start code",
+            description: command,
+          })
+          return
+        }
+        setPreview("runTerminalID", id)
+        terminal.open(id)
+        showToast({ title: "Started in terminal", description: command })
+      })
   }
 
   const zoomOut = () => setState("zoom", (value) => clamp(value - 10, 50, 200))
@@ -525,7 +572,9 @@ export function WorkbenchPanel(props: {
       return
     }
 
-    const next = await api()!.read(path).catch(() => null)
+    const next = await api()!
+      .read(path)
+      .catch(() => null)
     if (next === null) {
       showToast({
         variant: "error",
@@ -618,7 +667,9 @@ export function WorkbenchPanel(props: {
       await Promise.all(
         clean.map(async (item) => {
           if (!api()) return
-          const next = await api()!.read(item.path).catch(() => null)
+          const next = await api()!
+            .read(item.path)
+            .catch(() => null)
           if (next === null) return
           setState("tabs", (list) =>
             list.map((tab) => (tab.path === item.path ? { ...tab, value: next, saved: next, dirty: false } : tab)),
@@ -689,15 +740,9 @@ export function WorkbenchPanel(props: {
     setState("box", next)
   }
 
-  createResizeObserver(
-    () => body,
-    fitBody,
-  )
+  createResizeObserver(() => body, fitBody)
 
-  createResizeObserver(
-    () => stage,
-    fitPreview,
-  )
+  createResizeObserver(() => stage, fitPreview)
 
   createEffect(() => {
     state.mode
@@ -721,9 +766,11 @@ export function WorkbenchPanel(props: {
     setState("open", dir, true)
     void load(dir, true)
     void scanPreview()
-    void fs.watch(dir, (event) => refresh(event.paths)).then((fn) => {
-      stop = fn
-    })
+    void fs
+      .watch(dir, (event) => refresh(event.paths))
+      .then((fn) => {
+        stop = fn
+      })
   })
 
   createEffect(() => {
@@ -846,7 +893,8 @@ export function WorkbenchPanel(props: {
       const text = typeof data.text === "string" ? data.text : undefined
       if (!url || !selector || !html) return
 
-      prompt.context.items()
+      prompt.context
+        .items()
         .filter((item) => item.type === "element" && item.url === url && item.selector === selector)
         .forEach((item) => prompt.context.remove(item.key))
 
@@ -881,7 +929,8 @@ export function WorkbenchPanel(props: {
   })
 
   const pane = "h-full shrink-0 min-w-0 overflow-hidden will-change-[width,opacity]"
-  const seg = "h-10 shrink-0 rounded-2xl border border-border-weaker-base bg-surface-base/95 p-1 shadow-xs-border backdrop-blur-sm flex items-center gap-1"
+  const seg =
+    "h-10 shrink-0 rounded-2xl border border-border-weaker-base bg-surface-base/95 p-1 shadow-xs-border backdrop-blur-sm flex items-center gap-1"
   const surfaceButton = (value: Surface, icon: "dot-grid" | "layout-right-full", label: string) => (
     <button
       type="button"
@@ -988,7 +1037,8 @@ export function WorkbenchPanel(props: {
                   classList={{
                     "h-10 shrink-0 px-3.5 rounded-2xl text-11-medium transition-all duration-150 flex items-center gap-2 border shadow-xs-border": true,
                     "border-border-weak-base bg-surface-base-active text-text-strong": state.files,
-                    "border-border-weaker-base bg-surface-base/95 text-text-weak hover:bg-surface-base-hover hover:text-text-base": !state.files,
+                    "border-border-weaker-base bg-surface-base/95 text-text-weak hover:bg-surface-base-hover hover:text-text-base":
+                      !state.files,
                   }}
                   onClick={() => {
                     if (state.files) {
@@ -1007,12 +1057,20 @@ export function WorkbenchPanel(props: {
 
           <div class="shrink-0 flex flex-wrap items-center justify-end gap-2">
             <Show when={props.onChatToggle}>
-              <Button variant="ghost" class="h-10 rounded-2xl px-3.5 text-12-medium border border-transparent hover:border-border-weaker-base" onClick={props.onChatToggle}>
+              <Button
+                variant="ghost"
+                class="h-10 rounded-2xl px-3.5 text-12-medium border border-transparent hover:border-border-weaker-base"
+                onClick={props.onChatToggle}
+              >
                 {props.chatHidden ? "Show chat" : "Hide chat"}
               </Button>
             </Show>
             <Show when={props.onClose}>
-              <Button variant="ghost" class="h-10 rounded-2xl px-3.5 text-12-medium border border-transparent hover:border-border-weaker-base" onClick={props.onClose}>
+              <Button
+                variant="ghost"
+                class="h-10 rounded-2xl px-3.5 text-12-medium border border-transparent hover:border-border-weaker-base"
+                onClick={props.onClose}
+              >
                 {language.t("common.close")}
               </Button>
             </Show>
@@ -1183,14 +1241,14 @@ export function WorkbenchPanel(props: {
                     <div class="min-w-0 shrink-0 flex items-center gap-2 self-start max-w-full overflow-x-auto">
                       <Button
                         variant="ghost"
-                        class={working() ? "h-8 px-3 gap-2 text-11-medium text-text-strong" : "h-8 px-3 gap-2 text-11-medium"}
+                        class="h-8 px-3 gap-2 text-11-medium"
                         onClick={runCode}
-                        aria-label={working() ? "Stop code run" : "Run code"}
-                        title={working() ? "Stop the current chat run" : state.runCommand || "Run detected dev command"}
+                        aria-label="Run code"
+                        title={effectiveRunCommand() || "Run detected dev command"}
                       >
-                        <Icon name={working() ? "stop" : "terminal"} class="size-4" />
+                        <Icon name="terminal" class="size-4" />
                         <Show when={!compact()}>
-                          <span>{working() ? "Stop code" : "Run code"}</span>
+                          <span>Run code</span>
                         </Show>
                       </Button>
                       <Show when={previewUrl()}>
@@ -1221,7 +1279,11 @@ export function WorkbenchPanel(props: {
                       </Show>
                       <Button
                         variant="ghost"
-                        class={state.pick ? "h-8 px-3 gap-2 text-11-medium bg-surface-base-active text-text-strong" : "h-8 px-3 gap-2 text-11-medium"}
+                        class={
+                          state.pick
+                            ? "h-8 px-3 gap-2 text-11-medium bg-surface-base-active text-text-strong"
+                            : "h-8 px-3 gap-2 text-11-medium"
+                        }
                         disabled={!previewUrl() || state.waitPick}
                         onClick={pick}
                         aria-label={state.pick ? "Stop selecting elements" : "Select an element from preview"}
@@ -1243,10 +1305,23 @@ export function WorkbenchPanel(props: {
                     }}
                   >
                     <div class="min-w-0 h-9 flex-1 rounded-xl border border-border-weaker-base bg-background-stronger px-3 flex items-center gap-2">
-                      <div class={`size-2 rounded-full ${previewUrl() ? "bg-icon-success-base" : "bg-icon-disabled"}`} />
+                      <div
+                        classList={{
+                          "size-2 rounded-full": true,
+                          "bg-icon-success-base": !!previewUrl(),
+                          "bg-icon-warning-base": manualPreviewInvalid(),
+                          "bg-icon-disabled": !previewUrl() && !manualPreviewInvalid(),
+                        }}
+                      />
                       <div class="min-w-0 flex-1 truncate text-11-medium text-text-weak">
                         {previewLabel() ||
-                          (state.staticScan ? "Scanning workspace preview targets..." : "Waiting for a preview target")}
+                          (manualPreviewInvalid()
+                            ? "Enter a valid http(s) preview URL"
+                            : previewSource() === "pending"
+                              ? "Waiting for the started terminal preview URL"
+                              : state.staticScan
+                                ? "Scanning workspace preview targets..."
+                                : "Waiting for a preview target")}
                       </div>
                     </div>
                     <div class="min-w-0 shrink-0 max-w-full rounded-xl border border-border-weaker-base bg-background-stronger p-1 flex items-center gap-1 overflow-x-auto">
@@ -1296,18 +1371,91 @@ export function WorkbenchPanel(props: {
                     </div>
                   </div>
 
+                  <div
+                    classList={{
+                      "min-w-0 gap-2": true,
+                      "grid grid-cols-2": !compact(),
+                      "grid grid-cols-1": compact(),
+                    }}
+                  >
+                    <label
+                      class="min-w-0 h-9 rounded-xl border border-border-weaker-base bg-background-stronger px-3 flex items-center gap-2"
+                      title="Command to run in the workspace terminal"
+                    >
+                      <Icon name="terminal" class="size-4 shrink-0 text-icon-base" />
+                      <input
+                        class="min-w-0 flex-1 bg-transparent outline-none text-11-medium text-text-base placeholder:text-text-disabled"
+                        value={preview.manualCommand}
+                        placeholder={state.runCommand || "npm run dev"}
+                        aria-label="Preview run command"
+                        spellcheck={false}
+                        onInput={(event) => setPreview("manualCommand", event.currentTarget.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") runCode()
+                        }}
+                      />
+                      <Show when={preview.manualCommand.trim()}>
+                        <button
+                          type="button"
+                          class="size-5 shrink-0 rounded-sm flex items-center justify-center text-icon-base hover:bg-surface-base-hover"
+                          aria-label="Clear preview run command"
+                          onClick={() => setPreview("manualCommand", "")}
+                        >
+                          <Icon name="close-small" size="small" />
+                        </button>
+                      </Show>
+                    </label>
+                    <label
+                      classList={{
+                        "min-w-0 h-9 rounded-xl border bg-background-stronger px-3 flex items-center gap-2": true,
+                        "border-border-weaker-base": !manualPreviewInvalid(),
+                        "border-border-warning-base": manualPreviewInvalid(),
+                      }}
+                      title="Manual preview URL"
+                    >
+                      <Icon name="open-file" class="size-4 shrink-0 text-icon-base" />
+                      <input
+                        class="min-w-0 flex-1 bg-transparent outline-none text-11-medium text-text-base placeholder:text-text-disabled"
+                        value={preview.manualUrl}
+                        placeholder="https://app.example.com or localhost:5173"
+                        aria-label="Manual preview URL"
+                        spellcheck={false}
+                        onInput={(event) => setPreview("manualUrl", event.currentTarget.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") reload()
+                        }}
+                      />
+                      <Show when={preview.manualUrl.trim()}>
+                        <button
+                          type="button"
+                          class="size-5 shrink-0 rounded-sm flex items-center justify-center text-icon-base hover:bg-surface-base-hover"
+                          aria-label="Clear manual preview URL"
+                          onClick={() => setPreview("manualUrl", "")}
+                        >
+                          <Icon name="close-small" size="small" />
+                        </button>
+                      </Show>
+                    </label>
+                  </div>
+
                   <div class="text-11-medium text-text-weak">
                     {state.waitPick
-                        ? "Loading the picker snapshot..."
-                        : state.pick
-                          ? "Click any element in the preview to add it to the chat box."
-                          : previewSource() === "live"
-                            ? "Following the latest localhost app from chat or terminal."
-                            : previewSource() === "static"
-                              ? `Previewing ${state.staticLabel} directly from this workspace.`
-                              : state.staticScan
-                                ? "Looking for a dev server script or a plain index.html file in this workspace."
-                                : "Run the app in the main terminal, or open a workspace with a plain index.html file."}
+                      ? "Loading the picker snapshot..."
+                      : state.pick
+                        ? "Click any element in the preview to add it to the chat box."
+                        : manualPreviewInvalid()
+                          ? "Use http(s), localhost:port, or a public preview URL."
+                          : previewSource() === "manual"
+                            ? "Using the manual preview URL for this workspace."
+                            : previewSource() === "pending"
+                              ? "Started the workspace terminal; waiting for that process to print a preview URL."
+                              : previewSource() === "live"
+                                ? "Following the latest preview URL from the selected terminal or chat."
+                                : previewSource() === "static"
+                                  ? `Previewing ${state.staticLabel} directly from this workspace.`
+                                  : state.staticScan
+                                    ? "Looking for a dev server script or a plain index.html file in this workspace."
+                                    : "Enter a preview URL, run a terminal command, or open a workspace with a plain index.html file."}
                   </div>
                 </div>
 
@@ -1317,18 +1465,19 @@ export function WorkbenchPanel(props: {
                       when={previewUrl()}
                       fallback={
                         <div class="size-full flex items-center justify-center px-6 text-center text-13-medium text-text-weak">
-                          {state.staticScan
-                            ? "Scanning this workspace for previewable HTML."
-                            : "Preview will appear automatically when a localhost app is running or a plain index.html file is found."}
+                          {manualPreviewInvalid()
+                            ? "Enter a valid preview URL to load this canvas."
+                            : previewSource() === "pending"
+                              ? "Waiting for the started terminal to print its local preview URL."
+                              : state.staticScan
+                                ? "Scanning this workspace for previewable HTML."
+                                : "Preview will appear when a URL is entered, a dev server is detected, or a plain index.html file is found."}
                         </div>
                       }
                     >
                       {(url) => (
                         <div class="box-border min-h-full min-w-full overflow-hidden flex items-start justify-center p-4">
-                          <div
-                            class="relative shrink-0"
-                            style={{ width: `${scaledW()}px`, height: `${scaledH()}px` }}
-                          >
+                          <div class="relative shrink-0" style={{ width: `${scaledW()}px`, height: `${scaledH()}px` }}>
                             <div
                               class="absolute left-0 top-0 box-border overflow-hidden rounded-[22px] border border-border-weaker-base bg-[#14151d] shadow-[var(--shadow-lg-border-base)] flex flex-col"
                               style={{

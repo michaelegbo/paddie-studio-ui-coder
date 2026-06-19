@@ -6,6 +6,8 @@ let getWorkspaceTerminalCacheKey: (dir: string, scope?: string) => string
 let getTerminalServerScope: typeof import("./terminal").getTerminalServerScope
 let getLegacyTerminalStorageKeys: (dir: string, legacySessionID?: string) => string[]
 let migrateTerminalState: (value: unknown) => unknown
+let terminalRunCommand: typeof import("./terminal").terminalRunCommand
+let terminalRunTitle: typeof import("./terminal").terminalRunTitle
 
 beforeAll(async () => {
   mock.module("@solidjs/router", () => ({
@@ -23,6 +25,8 @@ beforeAll(async () => {
   getTerminalServerScope = mod.getTerminalServerScope
   getLegacyTerminalStorageKeys = mod.getLegacyTerminalStorageKeys
   migrateTerminalState = mod.migrateTerminalState
+  terminalRunCommand = mod.terminalRunCommand
+  terminalRunTitle = mod.terminalRunTitle
 })
 
 describe("getWorkspaceTerminalCacheKey", () => {
@@ -121,5 +125,26 @@ describe("migrateTerminalState", () => {
         { id: "two", title: "shell", titleNumber: 7 },
       ],
     })
+  })
+})
+
+describe("terminalRunCommand", () => {
+  test("runs workspace commands through cmd on Windows", () => {
+    expect(terminalRunCommand("npm run dev", "windows")).toEqual({
+      command: "cmd.exe",
+      args: ["/d", "/s", "/c", "npm run dev"],
+    })
+  })
+
+  test("runs workspace commands through sh on unix platforms", () => {
+    expect(terminalRunCommand("npm run dev", "linux")).toEqual({
+      command: "sh",
+      args: ["-lc", "npm run dev"],
+    })
+  })
+
+  test("uses compact terminal titles", () => {
+    expect(terminalRunTitle("npm run dev")).toBe("npm run dev")
+    expect(terminalRunTitle("x".repeat(80))).toBe(`${"x".repeat(51)}...`)
   })
 })

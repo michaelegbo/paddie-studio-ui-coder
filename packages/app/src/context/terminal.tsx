@@ -3,7 +3,7 @@ import { createSimpleContext } from "@opencode-ai/ui/context"
 import { batch, createEffect, createMemo, createRoot, on, onCleanup } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { useSDK } from "./sdk"
-import type { Platform } from "./platform"
+import { usePlatform, type Platform } from "./platform"
 import { ServerConnection, useServer } from "./server"
 import { defaultTitle, titleNumber } from "./terminal-title"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
@@ -132,6 +132,17 @@ const trimTerminal = (pty: LocalPTY) => {
   }
 }
 
+export function terminalRunCommand(command: string, os?: Platform["os"]) {
+  if (os === "windows") return { command: "cmd.exe", args: ["/d", "/s", "/c", command] }
+  return { command: "sh", args: ["-lc", command] }
+}
+
+export function terminalRunTitle(command: string) {
+  const title = command.trim()
+  if (title.length <= 54) return title || "Preview server"
+  return `${title.slice(0, 51)}...`
+}
+
 export function clearWorkspaceTerminals(dir: string, sessionIDs?: string[], platform?: Platform, scope?: string) {
   const key = getWorkspaceTerminalCacheKey(dir, scope)
   for (const cache of caches) {
@@ -158,6 +169,7 @@ function createWorkspaceTerminalSession(
   dir: string,
   legacySessionID?: string,
   scope?: string,
+  os?: Platform["os"],
 ) {
   const legacy = scope ? [] : getLegacyTerminalStorageKeys(dir, legacySessionID)
 
@@ -297,6 +309,35 @@ function createWorkspaceTerminalSession(
           console.error("Failed to create terminal", error)
         })
     },
+    async run(input: { command: string; cwd?: string; title?: string }) {
+      const command = input.command.trim()
+      if (!command) return
+
+      const nextNumber = pickNextTerminalNumber()
+      const title = input.title?.trim() || terminalRunTitle(command)
+      const shell = terminalRunCommand(command, os)
+      const next = await sdk.client.pty
+        .create({
+          command: shell.command,
+          args: shell.args,
+          cwd: input.cwd,
+          title,
+        })
+        .catch((error: unknown) => {
+          console.error("Failed to run terminal command", error)
+          return undefined
+        })
+      const id = next?.data?.id
+      if (!id) return
+
+      setStore("all", store.all.length, {
+        id,
+        title: next.data?.title ?? title,
+        titleNumber: nextNumber,
+      })
+      setStore("active", id)
+      return id
+    },
     update(pty: Partial<LocalPTY> & { id: string }) {
       update(sdk.client, pty)
     },
@@ -385,6 +426,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
   gate: false,
   init: () => {
     const sdk = useSDK()
+    const platform = usePlatform()
     const server = useServer()
     const params = useParams()
     const cache = new Map<string, TerminalCacheEntry>()
@@ -425,7 +467,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
       }
 
       const entry = createRoot((dispose) => ({
-        value: createWorkspaceTerminalSession(sdk, dir, legacySessionID, serverScope),
+        value: createWorkspaceTerminalSession(sdk, dir, legacySessionID, serverScope, platform.os),
         dispose,
       }))
 
@@ -454,6 +496,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
       all: () => workspace().all(),
       active: () => workspace().active(),
       new: () => workspace().new(),
+      run: (input: { command: string; cwd?: string; title?: string }) => workspace().run(input),
       update: (pty: Partial<LocalPTY> & { id: string }) => workspace().update(pty),
       trim: (id: string) => workspace().trim(id),
       trimAll: () => workspace().trimAll(),
