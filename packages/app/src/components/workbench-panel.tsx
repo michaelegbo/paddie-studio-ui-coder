@@ -456,6 +456,50 @@ export function WorkbenchPanel(props: { chatHidden?: boolean; onChatToggle?: Voi
     setState("doc", "")
     setState("waitPick", false)
   }
+  const addElementContext = (item: { url: string; selector: string; label: string; html: string; text?: string }) => {
+    prompt.context
+      .items()
+      .filter((ctx) => ctx.type === "element" && ctx.url === item.url && ctx.selector === item.selector)
+      .forEach((ctx) => prompt.context.remove(ctx.key))
+
+    prompt.context.add({
+      type: "element",
+      url: item.url,
+      selector: item.selector,
+      label: item.label,
+      html: item.html,
+      text: item.text,
+    })
+    if (props.chatHidden) props.onChatToggle?.()
+    requestAnimationFrame(() => {
+      const node = document.querySelector('[data-component="prompt-input"]')
+      if (node instanceof HTMLElement) node.focus()
+    })
+    showToast({
+      title: "Element added to chat",
+      description: `${item.label} · picker still active`,
+    })
+  }
+  const pickLiveArea = (event: MouseEvent) => {
+    const url = previewUrl()
+    if (!url) return
+    const target = event.currentTarget
+    if (!(target instanceof HTMLElement)) return
+    const box = target.getBoundingClientRect()
+    const x = clamp((event.clientX - box.left) / Math.max(1, box.width), 0, 1)
+    const y = clamp((event.clientY - box.top) / Math.max(1, box.height), 0, 1)
+    const xp = Math.round(x * 1000) / 10
+    const yp = Math.round(y * 1000) / 10
+    const selector = `visual:${xp}%,${yp}%:${frameW()}x${Math.max(0, frameH() - chrome)}`
+    const label = `Preview area ${xp}%, ${yp}%`
+    addElementContext({
+      url,
+      selector,
+      label,
+      html: `<paddie-preview-selection url="${esc(url)}" x="${xp}%" y="${yp}%" viewport="${frameW()}x${Math.max(0, frameH() - chrome)}" />`,
+      text: `Selected visual area at ${xp}% from the left and ${yp}% from the top of the preview viewport.`,
+    })
+  }
   const pick = () => {
     const url = previewUrl()
     if (!url) {
@@ -469,13 +513,16 @@ export function WorkbenchPanel(props: { chatHidden?: boolean; onChatToggle?: Voi
 
     if (state.pick) return stopPick()
 
+    if (previewSource() !== "static") {
+      setState("doc", "")
+      setState("waitPick", false)
+      setState("pick", true)
+      return
+    }
+
     setState("waitPick", true)
-    const run = platform.fetch ?? fetch
-    const html =
-      previewSource() === "static" && state.staticPath && api()
-        ? api()!.read(state.staticPath)
-        : run(url).then((res) => res.text())
-    void html
+    void api()!
+      .read(state.staticPath)
       .then((html) => {
         setState("doc", pickDoc(url, html))
         setState("pick", true)
@@ -893,27 +940,12 @@ export function WorkbenchPanel(props: { chatHidden?: boolean; onChatToggle?: Voi
       const text = typeof data.text === "string" ? data.text : undefined
       if (!url || !selector || !html) return
 
-      prompt.context
-        .items()
-        .filter((item) => item.type === "element" && item.url === url && item.selector === selector)
-        .forEach((item) => prompt.context.remove(item.key))
-
-      prompt.context.add({
-        type: "element",
+      addElementContext({
         url,
         selector,
         label,
         html,
         text,
-      })
-      if (props.chatHidden) props.onChatToggle?.()
-      requestAnimationFrame(() => {
-        const node = document.querySelector('[data-component="prompt-input"]')
-        if (node instanceof HTMLElement) node.focus()
-      })
-      showToast({
-        title: "Element added to chat",
-        description: `${label} · picker still active`,
       })
     }
 
@@ -1442,7 +1474,9 @@ export function WorkbenchPanel(props: { chatHidden?: boolean; onChatToggle?: Voi
                     {state.waitPick
                       ? "Loading the picker snapshot..."
                       : state.pick
-                        ? "Click any element in the preview to add it to the chat box."
+                        ? state.doc
+                          ? "Click any element in the preview to add it to the chat box."
+                          : "Click an area in the live preview to add it to the chat box."
                         : manualPreviewInvalid()
                           ? "Use http(s), localhost:port, or a public preview URL."
                           : previewSource() === "manual"
@@ -1495,13 +1529,26 @@ export function WorkbenchPanel(props: { chatHidden?: boolean; onChatToggle?: Voi
                                   {previewLabel() || url()}
                                 </div>
                               </div>
-                              <iframe
-                                ref={frame}
-                                src={state.pick && state.doc ? undefined : url()}
-                                srcdoc={state.pick && state.doc ? state.doc : undefined}
-                                class="block min-h-0 flex-1 w-full border-0 bg-white"
-                                title="Preview"
-                              />
+                              <div class="relative min-h-0 flex-1 w-full bg-white">
+                                <iframe
+                                  ref={frame}
+                                  src={state.pick && state.doc ? undefined : url()}
+                                  srcdoc={state.pick && state.doc ? state.doc : undefined}
+                                  class="block size-full border-0 bg-white"
+                                  title="Preview"
+                                />
+                                <Show when={state.pick && !state.doc}>
+                                  <button
+                                    type="button"
+                                    class="absolute inset-0 z-10 cursor-crosshair border-0 bg-transparent p-0"
+                                    aria-label="Select preview area"
+                                    title="Click an area to add it to chat"
+                                    onClick={pickLiveArea}
+                                  >
+                                    <span class="pointer-events-none absolute inset-0 border-2 border-dashed border-blue-400/70 bg-blue-400/5" />
+                                  </button>
+                                </Show>
+                              </div>
                             </div>
                           </div>
                         </div>
