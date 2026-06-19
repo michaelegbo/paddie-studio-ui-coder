@@ -10,6 +10,29 @@ export const previewUrl = (text: string) => {
   return hit.replace("0.0.0.0", "localhost").replace("[::1]", "localhost")
 }
 
+export const normalizeManualPreviewUrl = (text: string) => {
+  const value = text.trim()
+  if (!value) return
+  const withProtocol =
+    /^https?:\/\//i.test(value) || /^https?:\/\/\[/i.test(value)
+      ? value
+      : /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+|\/|$)/i.test(value)
+        ? `http://${value}`
+        : `https://${value}`
+
+  try {
+    const url = new URL(withProtocol)
+    if (url.protocol !== "http:" && url.protocol !== "https:") return
+    if (!url.hostname) return
+    if (url.hostname === "0.0.0.0" || url.hostname === "[::1]" || url.hostname === "::1") {
+      url.hostname = "localhost"
+    }
+    return url.href
+  } catch {
+    return
+  }
+}
+
 const metaUrl = (value: unknown) => {
   if (!record(value)) return
   const url = value.url
@@ -45,4 +68,14 @@ export const previewFromTerminals = (all: LocalPTY[]) => {
     const hit = all[i]!.buffer ? previewUrl(all[i]!.buffer!) : undefined
     if (hit) return hit
   }
+}
+
+export const previewFromTerminal = (pty: LocalPTY | undefined) => {
+  if (!pty?.buffer) return
+  return previewUrl(pty.buffer)
+}
+
+export const previewFromTerminalID = (all: LocalPTY[], id: string | undefined) => {
+  if (!id) return
+  return previewFromTerminal(all.find((pty) => pty.id === id))
 }
